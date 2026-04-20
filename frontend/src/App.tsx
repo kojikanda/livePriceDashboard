@@ -1,30 +1,35 @@
-import { useEffect, useState } from "react";
-import { io } from "socket.io-client";
-import { Typography, Box } from "@mui/material";
+import { Box, Container, Typography } from "@mui/material";
+import { usePriceStream } from "./hooks/usePriceStream";
+import { PriceChart } from "./components/PriceChart";
+import { AlertSettings } from "./components/AlertSettings";
 
-const socket = io("http://localhost:3001");
+const SYMBOL = "BTC";
+const MAX_HISTORY = 50;
 
 function App() {
-  const [price, setPrice] = useState<number | null>(null);
-
-  useEffect(() => {
-    // イベント名: btcPriceでWebSocket通信実行
-    socket.on("btcPrice", (data: { price: number }) => {
-      setPrice(data.price);
-    });
-
-    return () => {
-      socket.off("btcPrice");
-    };
-  }, []);
+  const { currentPrice, history } = usePriceStream({
+    symbol: SYMBOL,
+    maxHistory: MAX_HISTORY,
+  });
 
   return (
-    <Box sx={{ p: 4 }}>
-      <Typography variant="h4">BTC Price</Typography>
-      <Typography variant="h2">
-        {price !== null ? `$${price.toLocaleString()}` : "接続中..."}
-      </Typography>
-    </Box>
+    <Container maxWidth="md">
+      <Box sx={{ py: 4 }}>
+        <Typography variant="h4" gutterBottom>
+          Live Price Dashboard
+        </Typography>
+        <Typography variant="h6" color="text.secondary">
+          {SYMBOL}/USDT
+        </Typography>
+        <Typography variant="h2" sx={{ mt: 2 }}>
+          {currentPrice !== null
+            ? `$${currentPrice.toLocaleString()}`
+            : "接続中..."}
+        </Typography>
+        <AlertSettings symbol={SYMBOL} currentPrice={currentPrice} />
+        <PriceChart symbol={SYMBOL} data={history} />
+      </Box>
+    </Container>
   );
 }
 

@@ -18,8 +18,16 @@ const BINANCE_WS_URL = "wss://stream.binance.com:9443/ws/btcusdt@trade";
 function connectBinance() {
   const binanceWs = new WebSocket(BINANCE_WS_URL);
 
+  // // 最後に送信した時刻を記録して、1秒に1回だけ送信する
+  // let lastEmitTime = 0;
+
   // BinanceのAPIからデータを受信したときの処理
   binanceWs.on("message", (data) => {
+    // // 前回から1秒未満はクライアントにデータ送信しない
+    // const now = Date.now();
+    // if (now - lastEmitTime < 1000) return;
+    // lastEmitTime = now;
+
     const parsed = JSON.parse(data.toString());
     const price = parseFloat(parsed.p);
     io.emit("btcPrice", { price });
