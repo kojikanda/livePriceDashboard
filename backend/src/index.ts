@@ -11,15 +11,15 @@ const io = new Server(httpServer, {
   cors: { origin: "*" },
 });
 
+const interval = setInterval(() => {
+  const price = Math.floor(Math.random() * 10000) + 90000;
+  // 全クライアントに送る
+  io.emit("btcPrice", { price });
+}, 1000);
+
 // 接続されたときの動作
 io.on("connection", (socket) => {
   console.log("クライアント接続:", socket.id);
-
-  const interval = setInterval(() => {
-    const price = Math.floor(Math.random() * 10000) + 90000;
-    // イベント名: btcPriceでWebSocket通信によるデータ送信を実行
-    socket.emit("btcPrice", { price });
-  }, 1000);
 
   socket.on("disconnect", () => {
     clearInterval(interval);
