@@ -1,6 +1,7 @@
 import express from "express";
 import { createServer } from "http";
 import { Server } from "socket.io";
+import WebSocket from "ws";
 
 const app = express();
 // Socket.ioはExpressを直接使えないため、HTTPサーバーをラップする
@@ -11,21 +12,32 @@ const io = new Server(httpServer, {
   cors: { origin: "*" },
 });
 
-const interval = setInterval(() => {
-  const price = Math.floor(Math.random() * 10000) + 90000;
-  // 全クライアントに送る
-  io.emit("btcPrice", { price });
-}, 1000);
+const BINANCE_WS_URL = "wss://stream.binance.com:9443/ws/btcusdt@trade";
 
-// 接続されたときの動作
-io.on("connection", (socket) => {
-  console.log("クライアント接続:", socket.id);
+// BinanceパブリックWebSocket APIへの接続メソッド
+function connectBinance() {
+  const binanceWs = new WebSocket(BINANCE_WS_URL);
 
-  socket.on("disconnect", () => {
-    clearInterval(interval);
-    console.log("クライアント切断:", socket.id);
+  // BinanceのAPIからデータを受信したときの処理
+  binanceWs.on("message", (data) => {
+    const parsed = JSON.parse(data.toString());
+    const price = parseFloat(parsed.p);
+    io.emit("btcPrice", { price });
   });
-});
+
+  // BinanceのAPIでエラーが発生したときの処理
+  binanceWs.on("error", (err) => {
+    console.error("Binance WS error:", err.message);
+  });
+
+  // BinanceのAPIで切断したときの処理
+  binanceWs.on("close", () => {
+    console.log("Binance WS切断。3秒後に再接続します...");
+    setTimeout(connectBinance, 3000);
+  });
+}
+
+connectBinance();
 
 // listen実施
 const PORT = process.env.PORT || 3001;
