@@ -12,40 +12,40 @@ const io = new Server(httpServer, {
   cors: { origin: "*" },
 });
 
+// ブロードキャスト周期(msec)
+const BLOADCAST_CYCLE = 5000;
+
+// Binance WebSocket APIのURL
 const BINANCE_WS_URL = "wss://stream.binance.com:9443/ws/btcusdt@trade";
+// Binance WebSocket API用のWebSocket
+// 単にデータを受け取るだけなので、wsを使う
+const binanceWs = new WebSocket(BINANCE_WS_URL);
 
-// BinanceパブリックWebSocket APIへの接続メソッド
-function connectBinance() {
-  const binanceWs = new WebSocket(BINANCE_WS_URL);
+// 最新の価格
+let latestPrice: Number | null = null;
 
-  // // 最後に送信した時刻を記録して、1秒に1回だけ送信する
-  // let lastEmitTime = 0;
+// BinanceのAPIからデータを受信したときの処理
+binanceWs.on("message", (data) => {
+  // 最新の価格を保持する
+  const parsed = JSON.parse(data.toString());
+  latestPrice = parseFloat(parsed.p);
+});
 
-  // BinanceのAPIからデータを受信したときの処理
-  binanceWs.on("message", (data) => {
-    // // 前回から1秒未満はクライアントにデータ送信しない
-    // const now = Date.now();
-    // if (now - lastEmitTime < 1000) return;
-    // lastEmitTime = now;
+// ブロードキャスト周期毎にブロードキャストで最新価格を送る
+setInterval(() => {
+  if (latestPrice !== null) {
+    io.emit("btcPrice", { price: latestPrice });
+  }
+}, BLOADCAST_CYCLE);
 
-    const parsed = JSON.parse(data.toString());
-    const price = parseFloat(parsed.p);
-    io.emit("btcPrice", { price });
+// ユーザから接続されたときの動作
+io.on("connection", (socket) => {
+  console.log("クライアント接続:", socket.id);
+
+  socket.on("disconnect", () => {
+    console.log("クライアント切断:", socket.id);
   });
-
-  // BinanceのAPIでエラーが発生したときの処理
-  binanceWs.on("error", (err) => {
-    console.error("Binance WS error:", err.message);
-  });
-
-  // BinanceのAPIで切断したときの処理
-  binanceWs.on("close", () => {
-    console.log("Binance WS切断。3秒後に再接続します...");
-    setTimeout(connectBinance, 3000);
-  });
-}
-
-connectBinance();
+});
 
 // listen実施
 const PORT = process.env.PORT || 3001;

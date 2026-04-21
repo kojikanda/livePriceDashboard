@@ -4,7 +4,7 @@ import { PriceChart } from "./components/PriceChart";
 import { AlertSettings } from "./components/AlertSettings";
 
 const SYMBOL = "BTC";
-const MAX_HISTORY = 50;
+const MAX_HISTORY = 100;
 
 function App() {
   const { currentPrice, history } = usePriceStream({
