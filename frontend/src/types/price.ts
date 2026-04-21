@@ -13,3 +13,12 @@ export type PriceStreamOptions = {
   symbol: string;
   maxHistory: number;
 };
+
+/**
+ * サーバから受信するデータの型
+ */
+export type PricePayload = {
+  price: number;
+  volatilityAlert: boolean;
+  changePercent: number | null;
+};

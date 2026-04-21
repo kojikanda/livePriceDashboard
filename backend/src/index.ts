@@ -14,6 +14,15 @@ const io = new Server(httpServer, {
 
 // ブロードキャスト周期(msec)
 const BLOADCAST_CYCLE = 5000;
+// ボラティリティ監視ウィンドウ(秒)
+const VOLATILITY_WINDOW_SEC = 60;
+// ボラティリティアラート閾値(%)
+// const VOLATILITY_THRESHOLD = 1.0;
+const VOLATILITY_THRESHOLD = 0.1;
+// 価格の履歴保持数
+const PRICE_HISTORY_MAX = Math.ceil(
+  (VOLATILITY_WINDOW_SEC * 1000) / BLOADCAST_CYCLE,
+);
 
 // Binance WebSocket APIのURL
 const BINANCE_WS_URL = "wss://stream.binance.com:9443/ws/btcusdt@trade";
@@ -22,7 +31,9 @@ const BINANCE_WS_URL = "wss://stream.binance.com:9443/ws/btcusdt@trade";
 const binanceWs = new WebSocket(BINANCE_WS_URL);
 
 // 最新の価格
-let latestPrice: Number | null = null;
+let latestPrice: number | null = null;
+// 価格履歴キュー（直近VOLATILITY_WINDOW_SEC秒分）
+const priceHistory: number[] = [];
 
 // BinanceのAPIからデータを受信したときの処理
 binanceWs.on("message", (data) => {
@@ -31,11 +42,31 @@ binanceWs.on("message", (data) => {
   latestPrice = parseFloat(parsed.p);
 });
 
-// ブロードキャスト周期毎にブロードキャストで最新価格を送る
+// ブロードキャスト周期毎にブロードキャストで最新価格等を送信する
 setInterval(() => {
-  if (latestPrice !== null) {
-    io.emit("btcPrice", { price: latestPrice });
+  if (latestPrice === null) return;
+
+  // キューに追加し、最大保持件数を超えたら古いものを削除
+  priceHistory.push(latestPrice);
+  if (priceHistory.length > PRICE_HISTORY_MAX) {
+    // 先頭（最も古い価格）を削除
+    priceHistory.shift();
   }
+
+  // 変動率の計算とアラート判定
+  let volatilityAlert = false;
+  let changePercent: number | null = null;
+
+  if (priceHistory.length === PRICE_HISTORY_MAX) {
+    // データが1分分揃った場合のみ計算
+    const oldestPrice = priceHistory[0]!;
+    changePercent = ((latestPrice - oldestPrice) / oldestPrice) * 100;
+    if (Math.abs(changePercent) > VOLATILITY_THRESHOLD) {
+      volatilityAlert = true;
+    }
+  }
+
+  io.emit("btcPrice", { price: latestPrice, volatilityAlert, changePercent });
 }, BLOADCAST_CYCLE);
 
 // ユーザから接続されたときの動作
