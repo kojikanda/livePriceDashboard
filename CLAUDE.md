@@ -72,15 +72,26 @@ Binance APIからは、価格だけでなく「取引量（Volume）」も取れ
 - Binance パブリック WebSocket API（`btcusdt@trade`）に接続し、BTC価格をリアルタイム取得
 - 取得した価格を `io.emit("btcPrice", { price })` で全クライアントにブロードキャスト
 - 切断時の自動再接続ロジック（3秒後）
-- throttle処理（1秒に1回だけクライアントに送信）
+- ブロードキャスト周期: `BLOADCAST_CYCLE = 5000`（msec）で5秒ごとに送信
+- 価格急変検知（ボラティリティ・アラート）機能
+  - `VOLATILITY_WINDOW_SEC = 60`（秒）：監視ウィンドウ（定義値）
+  - `VOLATILITY_THRESHOLD = 1.0`（%）：アラート閾値（定義値）
+  - `priceHistory` 配列に直近1分間の価格をキューとして保持（`shift()` で古いものを削除）
+  - データが1分分揃った場合のみ変動率を計算し、閾値超過時は `volatilityAlert: true`・`changePercent: 値` をemitに含める
 
 #### Frontend
 
-- `src/types/price.ts`：`PriceData`・`PriceStreamOptions` の型定義
-- `src/hooks/usePriceStream.ts`：Socket.ioで価格を受信するカスタムフック（銘柄・最大件数を引数で受け取る設計）
-- `src/components/PriceChart.tsx`：Rechartsの折れ線グラフで直近50件の価格を表示
+- `src/types/price.ts`：`PriceData`・`PriceStreamOptions`・`PricePayload` の型定義
+- `src/hooks/usePriceStream.ts`：Socket.ioで価格を受信するカスタムフック
+  - `changePercent`・`showVolatilityAlert`・`setShowVolatilityAlert` を返す
+- `src/components/PriceChart.tsx`：Rechartsの折れ線グラフで直近100件の価格を表示（約8分超）
 - `src/components/AlertSettings.tsx`：上限・下限価格の入力フィールドと、到達時のMUI Snackbar通知
-- `src/App.tsx`：上記コンポーネントを組み合わせて表示
+- `src/App.tsx`：価格表示カード＋各種視覚効果を組み合わせて表示
+  - ボラティリティアラート時：カード赤枠 + `::after` 疑似要素による背景パルスアニメーション
+  - 価格フラッシュ：上昇→緑・下落→赤のテキストカラーアニメーション（`key` トリックで再起動）
+  - トレンドアイコン：`TrendingUp` / `TrendingDown`（`@mui/icons-material`）
+  - 変動率（%）を現在価格の横に表示（上昇→緑・下落→赤）
+  - ボラティリティアラート時：「急激な価格変動を検知しました！」Snackbar通知
 
 ### 現在のファイル構成
 
@@ -107,5 +118,8 @@ livePriceDashboard/
 
 ### 次回以降の候補タスク
 
+- ボラティリティ監視ウィンドウ（秒数）を画面から変更できるようにする
 - 複数銘柄（ETH、SOLなど）への対応
+- 仮想ポートフォリオ・シミュレーター
+- マーケット・センチメント（強気/弱気ゲージ）の可視化
 - Renderへのデプロイ

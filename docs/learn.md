@@ -78,6 +78,33 @@ TypeScriptの型定義を適切に行ってください。
 サーバー起動直後など、データが1分分溜まっていない間はアラート判定をスキップするようにしてください。
 ```
 
+## 5. 価格変化による視覚的な変化に対応
+
+```
+UIを強化し、価格変化を直感的に伝える「視覚的効果」を追加してください。
+
+【実装要件】
+
+1. 価格のフラッシュ表示:
+前回の価格と比較して、上がった場合は「緑」、下がった場合は「赤」に、現在価格のテキスト色を一瞬変化させてください。
+CSSの transition を使い、変化した色が 1秒ほどかけてゆっくり元の色（白や黒）に戻るようにしてください。
+
+2. アラート時の強調スタイル:
+価格表示を行っている箇所はカードを使うよう、修正してください。
+さらに、volatilityAlert: true を受け取っている間、価格を表示しているカード全体の境界線（Border）を赤く太くし、警告感を出してください。
+可能であれば、カードの背景に薄い赤色の「パルスアニメーション（波打つような動き）」を加えてください。
+
+3. トレンドアイコンの追加:
+価格の横に、上昇中なら TrendingUp、下落中なら TrendingDown アイコン（MUI Icons）を表示してください。
+
+4. MUIの活用:
+これらのスタイルは、MUIの sx プロパティや styled-components の仕組みを使って、Reactらしい動的なスタイル制御で実装してください。
+
+【考慮事項】
+・5秒おき(ブロードキャスト周期)の更新タイミングで、パッと色が変わる「心地よさ」を重視してください。
+・アニメーションがCPUに負荷をかけすぎないよう、シンプルな実装を心がけてください。
+```
+
 ---
 
 <br>
@@ -251,3 +278,125 @@ BTCUSDTは高い流動性を持ち、安定的に取引できる。
 ## ■CSS
 
 - alignItems: "baseline" → フレックスコンテナ内の子要素を、要素内部のテキストのベースライン（文字の底辺）で揃える配置設定
+
+## ■CSSアニメーションについて
+
+### ◯@keyframesについて
+
+MUI は内部で**Emotion**というCSSライブラリを使っており、@mui/systemのkeyframesを使うことで、通常のCSSの@keyframesをJavaScript上で定義できる。
+
+```typescript
+import { keyframes } from "@mui/system";
+
+// 価格フラッシュ（緑：上昇）
+const flashUp = keyframes`
+    from { color: #4caf50; }                                                                           
+    to   { color: inherit; }
+  `;
+
+// 価格フラッシュ（赤：下落）
+const flashDown = keyframes`
+    from { color: #f44336; }
+    to   { color: inherit; }
+  `;
+
+// アラートカードのパルス
+const pulseRed = keyframes`                                                                          
+    0%   { background-color: rgba(244, 67, 54, 0.05); }
+    50%  { background-color: rgba(244, 67, 54, 0.15); }                                                
+    100% { background-color: rgba(244, 67, 54, 0.05); }
+  `;
+```
+
+CSSの@keyframesは、Webページ上で要素のアニメーションにおける「途中経過（スタイル）」を定義するルール。<br>
+開始（0%）から終了（100%）までの間、位置や色、大きさなどを細かく指定し、複雑な動きを自動で補間して作成できる。
+
+#### 基本
+
+```css
+@keyframes アニメーション名 {
+  0% {
+    /* 開始時のスタイル */
+  }
+  50% {
+    /* 中間点のスタイル */
+  }
+  100% {
+    /* 終了時のスタイル */
+  }
+}
+```
+
+#### コード例
+
+```css
+/* 1. アニメーションを定義 */
+@keyframes slideIn {
+  0% {
+    transform: translateX(-100px);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* 2. 要素に適用 */
+.box {
+  animation: slideIn 1s ease-in-out forwards;
+}
+```
+
+### ◯アニメーション再起動の「keyトリック」について
+
+Reactでは、コンポーネントの**key**が変わると、そのコンポーネントは一度アンマウント（削除）されて再マウント（再作成）される。<br>
+CSS アニメーションは「要素が生まれた瞬間」に開始されるので、**key**を変えることでアニメーションを強制的に再起動できる。
+
+```typescript
+// 価格が変わるたびに +1 されるカウンター
+const [flashKey, setFlashKey] = useState(0);
+
+{/* key が変わるたびに Box が再マウントされ、アニメーションが再起動する */}
+<Box key={flashKey} sx={{ animation: `${flashUp} 1.5s ease forwards` }}>
+  <Typography variant="h2">...</Typography>
+</Box>
+```
+
+### ◯実際のCSS設定
+
+```typescript
+<Card
+  sx={{
+    mt: 2,
+    border: showVolatilityAlert
+      ? "3px solid #f44336"
+      : "1px solid transparent",
+    transition: "border 0.3s ease",
+    animation: showVolatilityAlert
+      ? `${pulseRed} 1.5s ease infinite`
+      : "none",
+  }}
+>
+```
+
+#### transition: "border 0.3s ease"
+
+borderが変化するときに、**0.3秒かけてなめらかに変化させる**という指定。
+
+- border: どのCSSプロパティに適用するか（borderの変化だけを対象にする
+- 0.3s: 変化にかける時間（0.3秒）
+- ease: 変化の緩急パターン（最初ゆっくり→速く→ゆっくり）
+
+transitionはあくまで変化をなめらかにするというもので、永遠にアニメーションすることはできない。
+
+#### animation: `${pulseRed} 1.5s ease infinite`
+
+keyframesで定義したアニメーションを再生する指定です。
+
+- ${pulseRed}: どのkeyframesアニメーションを使うか
+- 1.5s: 1サイクルにかける時間
+- ease: 各サイクルの緩急パターン
+- infinite: 終わらずに繰り返し続ける
+
+animationは設定に寄って、永遠にアニメーションすることができる。
