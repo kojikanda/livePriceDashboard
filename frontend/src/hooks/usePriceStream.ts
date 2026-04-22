@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
 import type {
   PriceData,
@@ -8,41 +8,95 @@ import type {
 
 const socket = io("http://localhost:3001");
 
+type ChangePercentState = {
+  value: number;
+  windowSec: number;
+  threshold: number;
+} | null;
+
 /**
  * 価格データ取得用カスタムフック
  * @param symbol 銘柄のシンボル
  * @param maxHistory 価格データの最大保持件数
+ * @param volatilityWindowSec ボラティリティ監視ウィンドウ(秒)
+ * @param volatilityThreshold ボラティリティアラート閾値(%)
  * @returns
  */
-export function usePriceStream({ symbol, maxHistory }: PriceStreamOptions) {
-  // 現在の価格
+
+export function usePriceStream({
+  symbol,
+  maxHistory,
+  volatilityWindowSec,
+  volatilityThreshold,
+}: PriceStreamOptions) {
   const [currentPrice, setCurrentPrice] = useState<number | null>(null);
-  // 価格の履歴情報
   const [history, setHistory] = useState<PriceData[]>([]);
-  // 価格の変動率
-  const [changePercent, setChangePercent] = useState<number | null>(null);
-  // ボラティリティアラート発生有無
+  const [changePercentState, setChangePercentState] =
+    useState<ChangePercentState>(null);
   const [showVolatilityAlert, setShowVolatilityAlert] = useState(false);
 
+  const volatilityHistoryRef = useRef<{ timestamp: number; price: number }[]>(
+    [],
+  );
+  const windowSecRef = useRef(volatilityWindowSec);
+  const thresholdRef = useRef(volatilityThreshold);
+
+  // 現在の設定値で計算されたものだけを表示（不一致ならnull）
+  const changePercent =
+    changePercentState !== null &&
+    changePercentState.windowSec === volatilityWindowSec &&
+    changePercentState.threshold === volatilityThreshold
+      ? changePercentState.value
+      : null;
+
+  // 設定値が変わったらrefを更新し、履歴をリセット
   useEffect(() => {
-    // WebSocketでやり取りするイベント名
+    windowSecRef.current = volatilityWindowSec;
+    thresholdRef.current = volatilityThreshold;
+    volatilityHistoryRef.current = [];
+  }, [volatilityWindowSec, volatilityThreshold]);
+
+  // socketイベントの登録・解除（設定値の変更には反応しない）
+  useEffect(() => {
     const eventName = `${symbol.toLowerCase()}Price`;
 
-    // WebSocketでデータを受信したときのイベント処理を追加
     socket.on(eventName, (data: PricePayload) => {
+      const now = Date.now();
+      const windowMs = windowSecRef.current * 1000;
+
       const entry: PriceData = {
         time: new Date().toLocaleTimeString(),
         price: data.price,
+        timestamp: now,
       };
       setCurrentPrice(data.price);
       setHistory((prev) => [...prev, entry].slice(-maxHistory));
-      setChangePercent(data.changePercent);
-      if (data.volatilityAlert) {
-        setShowVolatilityAlert(true);
+
+      const vHistory = volatilityHistoryRef.current;
+      vHistory.push({ timestamp: now, price: data.price });
+      while (vHistory.length > 0 && now - vHistory[0]!.timestamp > windowMs) {
+        vHistory.shift();
+      }
+
+      if (vHistory.length >= 2) {
+        const oldestEntry = vHistory[0]!;
+        const elapsedSec = (now - oldestEntry.timestamp) / 1000;
+        if (elapsedSec >= windowSecRef.current * 0.9) {
+          const pct =
+            ((data.price - oldestEntry.price) / oldestEntry.price) * 100;
+          // 計算時の設定値もセットで保存
+          setChangePercentState({
+            value: pct,
+            windowSec: windowSecRef.current,
+            threshold: thresholdRef.current,
+          });
+          if (Math.abs(pct) > thresholdRef.current) {
+            setShowVolatilityAlert(true);
+          }
+        }
       }
     });
 
-    // 切断が切れたときはイベントを解除
     return () => {
       socket.off(eventName);
     };

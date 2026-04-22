@@ -14,9 +14,12 @@ import { keyframes } from "@mui/system";
 import { usePriceStream } from "./hooks/usePriceStream";
 import { PriceChart } from "./components/PriceChart";
 import { AlertSettings } from "./components/AlertSettings";
+import { VolatilitySettings } from "./components/VolatilitySettings";
 
 const SYMBOL = "BTC";
 const MAX_HISTORY = 100;
+const DEFAULT_VOLATILITY_WINDOW_SEC = 60;
+const DEFAULT_VOLATILITY_THRESHOLD = 1.0;
 
 // アニメーション定義
 const flashUp = keyframes`
@@ -34,13 +37,25 @@ const pulseRed = keyframes`
 `;
 
 function App() {
+  const [volatilityWindowSec, setVolatilityWindowSec] = useState(
+    DEFAULT_VOLATILITY_WINDOW_SEC,
+  );
+  const [volatilityThreshold, setVolatilityThreshold] = useState(
+    DEFAULT_VOLATILITY_THRESHOLD,
+  );
+
   const {
     currentPrice,
     history,
     changePercent,
     showVolatilityAlert,
     setShowVolatilityAlert,
-  } = usePriceStream({ symbol: SYMBOL, maxHistory: MAX_HISTORY });
+  } = usePriceStream({
+    symbol: SYMBOL,
+    maxHistory: MAX_HISTORY,
+    volatilityWindowSec,
+    volatilityThreshold,
+  });
 
   // 前回価格（再レンダリング不要なので、useRefを使用）
   const prevPriceRef = useRef<number | null>(null);
@@ -159,6 +174,12 @@ function App() {
         </Card>
 
         <AlertSettings symbol={SYMBOL} currentPrice={currentPrice} />
+        <VolatilitySettings
+          volatilityWindowSec={volatilityWindowSec}
+          volatilityThreshold={volatilityThreshold}
+          onWindowChange={setVolatilityWindowSec}
+          onThresholdChange={setVolatilityThreshold}
+        />
         <PriceChart symbol={SYMBOL} data={history} />
       </Box>
 

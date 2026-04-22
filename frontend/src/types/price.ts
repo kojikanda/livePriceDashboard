@@ -4,6 +4,7 @@
 export type PriceData = {
   time: string;
   price: number;
+  timestamp: number;
 };
 
 /**
@@ -12,6 +13,8 @@ export type PriceData = {
 export type PriceStreamOptions = {
   symbol: string;
   maxHistory: number;
+  volatilityWindowSec: number;
+  volatilityThreshold: number;
 };
 
 /**
@@ -19,6 +22,4 @@ export type PriceStreamOptions = {
  */
 export type PricePayload = {
   price: number;
-  volatilityAlert: boolean;
-  changePercent: number | null;
 };
