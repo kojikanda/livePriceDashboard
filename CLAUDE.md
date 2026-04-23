@@ -84,13 +84,19 @@ Binance APIからは、価格だけでなく「取引量（Volume）」も取れ
 - `src/hooks/usePriceStream.ts`：Socket.ioで価格を受信するカスタムフック
   - ボラティリティ計算をフロントエンドで実施（タイムスタンプ基準のキュー管理）
   - `ChangePercentState` 型に計算時の設定値（`windowSec`・`threshold`）を持たせ、設定変更時に自動的に `null` を返す派生値パターンを採用
-  - `windowSecRef`・`thresholdRef` で最新設定値を保持し、socket コールバックの再登録を防止
-  - socket イベント登録の `useEffect` は `[symbol, maxHistory]` のみに依存（設定値変更では再登録しない）
+  - `windowSecRef`・`thresholdRef`・`maxHistoryRef` で最新設定値を保持し、socket コールバックの再登録を防止
+  - socket イベント登録の `useEffect` は `[symbol]` のみに依存（設定値変更では再登録しない）
+  - 各 ref は対応する `useEffect` で最新値に同期（`useEffect(() => { ref.current = value }, [value])` パターン）
   - 設定値変更時の `useEffect`：ウィンドウが変わった場合のみ古い履歴を削除、閾値のみの変更では履歴をそのまま保持
   - `removeDataOutsideWindow` 関数：`history[1]` の age で判定し、参照点となる最古エントリが早期削除されないよう制御（`history[0]` で判定すると90%閾値に届く前に削除され表示されなくなるバグを防ぐ）
+  - return 時に `history.slice(-maxHistory)` で派生値として履歴をトリム（effect 内での setState による cascading renders を回避）
   - `changePercent`・`showVolatilityAlert`・`setShowVolatilityAlert` を返す
-- `src/components/PriceChart.tsx`：Rechartsの折れ線グラフで直近100件の価格を表示（約8分超）
+- `src/components/PriceChart.tsx`：Rechartsの折れ線グラフで価格を表示
+  - `durationMin`・`onDurationChange` Props を追加
+  - グラフヘッダーを flex レイアウトにし、タイトル左・MUI Select（5分/15分/30分）右に配置
 - `src/components/AlertSettings.tsx`：上限・下限価格の入力フィールドと、到達時のMUI Snackbar通知
+  - `TextField` は `variant="outlined"`（ダークテーマに合わせ、明示的な色指定を廃止）
+  - `Alert` は `variant="filled"` でダークテーマでも視認性を確保
 - `src/components/VolatilitySettings.tsx`：監視ウィンドウ（秒）・アラート閾値（%）の設定UI
   - ローカルの文字列 state で入力中の中間状態を保持し、有効値のときのみ親へ通知
   - `error`・`helperText` Props でバリデーションエラーを視覚的に表示
@@ -99,8 +105,10 @@ Binance APIからは、価格だけでなく「取引量（Volume）」も取れ
   - 価格フラッシュ：上昇→緑・下落→赤のテキストカラーアニメーション（`key` トリックで再起動）
   - トレンドアイコン：`TrendingUp` / `TrendingDown`（`@mui/icons-material`）
   - 変動率（%）を現在価格の横に表示（上昇→緑・下落→赤）
-  - ボラティリティアラート時：「急激な価格変動を検知しました！」Snackbar通知
-  - `volatilityWindowSec`・`volatilityThreshold` の state を管理し `usePriceStream` と `VolatilitySettings` に渡す
+  - ボラティリティアラート時：「急激な価格変動を検知しました！」Snackbar通知（`variant="filled"`）
+  - `volatilityWindowSec`・`volatilityThreshold`・`chartDurationMin` の state を管理
+  - `BROADCAST_CYCLE_SEC = 5` に基づき `maxHistory = (chartDurationMin * 60) / BROADCAST_CYCLE_SEC` を動的に算出
+- `src/main.tsx`：MUI `ThemeProvider`（`mode: 'dark'`）と `CssBaseline` を追加し、全コンポーネントにダークテーマを適用
 
 ### 開発方針
 

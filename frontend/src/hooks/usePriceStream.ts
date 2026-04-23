@@ -69,6 +69,10 @@ export function usePriceStream({
   const windowSecRef = useRef(volatilityWindowSec);
   // ボラティリティアラート閾値
   const thresholdRef = useRef(volatilityThreshold);
+  // 価格データの最大保持件数
+  // サーバからのデータ受信イベントのクロージャ内で値を使用するため、
+  // refを使用することで、値が変化したときにも対応できるようにする
+  const maxHistoryRef = useRef(maxHistory);
 
   // 現在の設定値で計算されたものだけを表示（不一致ならnull）
   const changePercent =
@@ -93,6 +97,11 @@ export function usePriceStream({
     thresholdRef.current = volatilityThreshold;
   }, [volatilityWindowSec, volatilityThreshold]);
 
+  // maxHistoryRefの値を最新の値で更新
+  useEffect(() => {
+    maxHistoryRef.current = maxHistory;
+  }, [maxHistory]);
+
   // socketイベントの登録・解除（設定値の変更には反応しない）
   useEffect(() => {
     // WebSocketでやり取りするイベント名
@@ -110,7 +119,7 @@ export function usePriceStream({
         timestamp: now,
       };
       setCurrentPrice(data.price);
-      setHistory((prev) => [...prev, entry].slice(-maxHistory));
+      setHistory((prev) => [...prev, entry].slice(-maxHistoryRef.current));
 
       // ボラティリティアラートで使用する値を設定
       const vHistory = volatilityHistoryRef.current;
@@ -144,11 +153,11 @@ export function usePriceStream({
     return () => {
       socket.off(eventName);
     };
-  }, [symbol, maxHistory]);
+  }, [symbol]);
 
   return {
     currentPrice,
-    history,
+    history: history.slice(-maxHistory),
     changePercent,
     showVolatilityAlert,
     setShowVolatilityAlert,

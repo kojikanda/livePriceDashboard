@@ -67,30 +67,20 @@ export function AlertSettings({ symbol, currentPrice }: Props) {
       </Typography>
       <Box sx={{ display: "flex", gap: 2 }}>
         <TextField
-          variant="filled"
+          variant="outlined"
           label="Target High"
           type="number"
           value={targetHigh}
           onChange={(e) => setTargetHigh(e.target.value)}
           size="small"
-          sx={{ backgroundColor: "white", borderRadius: 1 }}
-          slotProps={{
-            inputLabel: { style: { color: "#555" } },
-            htmlInput: { style: { color: "#000" } },
-          }}
         />
         <TextField
-          variant="filled"
+          variant="outlined"
           label="Target Low"
           type="number"
           value={targetLow}
           onChange={(e) => setTargetLow(e.target.value)}
           size="small"
-          sx={{ backgroundColor: "white", borderRadius: 1 }}
-          slotProps={{
-            inputLabel: { style: { color: "#555" } },
-            htmlInput: { style: { color: "#000" } },
-          }}
         />
       </Box>
       <Snackbar
@@ -98,7 +88,11 @@ export function AlertSettings({ symbol, currentPrice }: Props) {
         autoHideDuration={4000}
         onClose={() => setOpen(false)}
       >
-        <Alert severity="warning" onClose={() => setOpen(false)}>
+        <Alert
+          severity="warning"
+          variant="filled"
+          onClose={() => setOpen(false)}
+        >
           {alertMessage}
         </Alert>
       </Snackbar>

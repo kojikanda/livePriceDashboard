@@ -17,7 +17,7 @@ import { AlertSettings } from "./components/AlertSettings";
 import { VolatilitySettings } from "./components/VolatilitySettings";
 
 const SYMBOL = "BTC";
-const MAX_HISTORY = 100;
+const BROADCAST_CYCLE_SEC = 5;
 const DEFAULT_VOLATILITY_WINDOW_SEC = 60;
 const DEFAULT_VOLATILITY_THRESHOLD = 1.0;
 
@@ -37,12 +37,18 @@ const pulseRed = keyframes`
 `;
 
 function App() {
+  // ボラティリティアラートの監視ウィンドウ(秒)
   const [volatilityWindowSec, setVolatilityWindowSec] = useState(
     DEFAULT_VOLATILITY_WINDOW_SEC,
   );
+  // ボラティリティアラートの閾値(%)
   const [volatilityThreshold, setVolatilityThreshold] = useState(
     DEFAULT_VOLATILITY_THRESHOLD,
   );
+  // グラフの表示期間(分)
+  const [chartDurationMin, setChartDurationMin] = useState(5);
+  // 保持する価格の履歴数
+  const maxHistory = (chartDurationMin * 60) / BROADCAST_CYCLE_SEC + 1;
 
   const {
     currentPrice,
@@ -52,7 +58,7 @@ function App() {
     setShowVolatilityAlert,
   } = usePriceStream({
     symbol: SYMBOL,
-    maxHistory: MAX_HISTORY,
+    maxHistory: maxHistory,
     volatilityWindowSec,
     volatilityThreshold,
   });
@@ -180,7 +186,12 @@ function App() {
           onWindowChange={setVolatilityWindowSec}
           onThresholdChange={setVolatilityThreshold}
         />
-        <PriceChart symbol={SYMBOL} data={history} />
+        <PriceChart
+          symbol={SYMBOL}
+          data={history}
+          durationMin={chartDurationMin}
+          onDurationChange={setChartDurationMin}
+        />
       </Box>
 
       {/* ボラティリティアラート */}
@@ -190,7 +201,11 @@ function App() {
         onClose={() => setShowVolatilityAlert(false)}
         anchorOrigin={{ vertical: "top", horizontal: "center" }}
       >
-        <Alert severity="warning" onClose={() => setShowVolatilityAlert(false)}>
+        <Alert
+          severity="warning"
+          variant="filled"
+          onClose={() => setShowVolatilityAlert(false)}
+        >
           急激な価格変動を検知しました！（{changePercent?.toFixed(2)}%）
         </Alert>
       </Snackbar>
