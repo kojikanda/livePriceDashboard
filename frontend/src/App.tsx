@@ -15,6 +15,7 @@ import { usePriceStream } from "./hooks/usePriceStream";
 import { PriceChart } from "./components/PriceChart";
 import { AlertSettings } from "./components/AlertSettings";
 import { VolatilitySettings } from "./components/VolatilitySettings";
+import { PortfolioSimulator } from "./components/PortfolioSimulator";
 
 const SYMBOL = "BTC";
 const BROADCAST_CYCLE_SEC = 5;
@@ -186,6 +187,7 @@ function App() {
           onWindowChange={setVolatilityWindowSec}
           onThresholdChange={setVolatilityThreshold}
         />
+        <PortfolioSimulator currentPrice={currentPrice} />
         <PriceChart
           symbol={SYMBOL}
           data={history}
