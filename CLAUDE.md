@@ -109,6 +109,17 @@ Binance APIからは、価格だけでなく「取引量（Volume）」も取れ
   - `volatilityWindowSec`・`volatilityThreshold`・`chartDurationMin` の state を管理
   - `BROADCAST_CYCLE_SEC = 5` に基づき `maxHistory = (chartDurationMin * 60) / BROADCAST_CYCLE_SEC` を動的に算出
 - `src/main.tsx`：MUI `ThemeProvider`（`mode: 'dark'`）と `CssBaseline` を追加し、全コンポーネントにダークテーマを適用
+- `src/components/PortfolioSimulator.tsx`：仮想ポートフォリオ・シミュレーターコンポーネント
+  - `Position` 型：`investedJpy`・`btcPriceUsd`・`usdJpyRate`・`btcAmount`・`direction` を保持
+  - `localStorage` でポジションを永続化（ページリロード後も保持）
+  - `USD_JPY_RATE = 150` の固定レートで JPY 換算（今後 API 取得に変更予定）
+  - `ToggleButtonGroup` でロング（買い）/ ショート（空売り）を選択
+  - 損益計算：ロングは `(現在価格 − 購入価格) × 数量`、ショートは符号を反転 `(購入価格 − 現在価格) × 数量`
+  - 評価額・含み損益・騰落率をリアルタイム（5秒更新）で表示
+  - 損益プラス→緑（`success.main`）・マイナス→赤（`error.main`）で色分け
+  - 決済（リセット）ボタンでポジション消去
+  - MUI v9 では `inputProps` が廃止されており、`slotProps={{ htmlInput: { min: 1 } }}` を使用
+- `src/App.tsx`：`<PortfolioSimulator currentPrice={currentPrice} />` を追加
 
 ### 開発方針
 
@@ -130,7 +141,8 @@ livePriceDashboard/
 │   │   ├── components/
 │   │   │   ├── PriceChart.tsx
 │   │   │   ├── AlertSettings.tsx
-│   │   │   └── VolatilitySettings.tsx
+│   │   │   ├── VolatilitySettings.tsx
+│   │   │   └── PortfolioSimulator.tsx
 │   │   ├── App.tsx
 │   │   └── main.tsx
 │   └── package.json
@@ -142,6 +154,8 @@ livePriceDashboard/
 ### 次回以降の候補タスク
 
 - 複数銘柄（ETH、SOLなど）への対応
-- 仮想ポートフォリオ・シミュレーター
+- 仮想ポートフォリオ・シミュレーターの拡張（基本機能は実装済み）
+  - 複数ポジション対応（配列で管理、MUI `DataGrid` で一覧表示）
+  - USD/JPY レートのリアルタイム取得（現在は `150` 固定）
 - マーケット・センチメント（強気/弱気ゲージ）の可視化
 - Renderへのデプロイ

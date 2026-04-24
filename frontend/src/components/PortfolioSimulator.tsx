@@ -6,6 +6,8 @@ import {
   CardContent,
   TextField,
   Typography,
+  ToggleButton,
+  ToggleButtonGroup,
 } from "@mui/material";
 
 // ポジションの型定義
@@ -18,6 +20,8 @@ type Position = {
   usdJpyRate: number;
   // 購入数
   btcAmount: number;
+  // 買い方向(ロング/ショート)
+  direction: "long" | "short";
 };
 
 // USD/JPYレート定義値
@@ -36,6 +40,8 @@ type Props = {
 export function PortfolioSimulator({ currentPrice }: Props) {
   // 入力中の投資金額（文字列）
   const [investAmount, setInvestAmount] = useState("");
+  // 買い方向
+  const [direction, setDirection] = useState<"long" | "short">("long");
 
   // 保有ポジション（localStorage で永続化）
   const [position, setPosition] = useState<Position | null>(() => {
@@ -54,6 +60,7 @@ export function PortfolioSimulator({ currentPrice }: Props) {
       btcPriceUsd: currentPrice,
       usdJpyRate: USD_JPY_RATE,
       btcAmount: jpy / (currentPrice * USD_JPY_RATE),
+      direction: direction,
     };
     setPosition(newPosition);
     localStorage.setItem("btc_position", JSON.stringify(newPosition));
@@ -74,8 +81,14 @@ export function PortfolioSimulator({ currentPrice }: Props) {
 
   // 含み損益
   const profitLoss =
-    currentValueJpy !== null && position !== null
-      ? currentValueJpy - position.investedJpy
+    position !== null && currentPrice !== null
+      ? position.direction === "long"
+        ? (currentPrice - position.btcPriceUsd) *
+          position.btcAmount *
+          position.usdJpyRate
+        : (position.btcPriceUsd - currentPrice) *
+          position.btcAmount *
+          position.usdJpyRate
       : null;
 
   // 騰落率
@@ -106,6 +119,23 @@ export function PortfolioSimulator({ currentPrice }: Props) {
         {position === null ? (
           // 購入フォーム
           <Box sx={{ display: "flex", gap: 1, alignItems: "flex-start" }}>
+            {/* 方向選択 */}
+            <ToggleButtonGroup
+              value={direction}
+              exclusive // 1つだけ選択可能
+              onChange={(_, val) => {
+                if (val !== null) setDirection(val); // null は選択解除なので無視
+              }}
+              size="small"
+              sx={{ mb: 1 }}
+            >
+              <ToggleButton value="long" color="success">
+                ロング（買い）
+              </ToggleButton>
+              <ToggleButton value="short" color="error">
+                ショート（売り）
+              </ToggleButton>
+            </ToggleButtonGroup>
             <TextField
               label="投資金額（日本円）"
               variant="outlined"
@@ -128,11 +158,10 @@ export function PortfolioSimulator({ currentPrice }: Props) {
           <Box>
             {/* 購入情報 */}
             <Typography variant="body2" color="text.secondary">
-              購入価格: ${position.btcPriceUsd.toLocaleString()} &nbsp;／&nbsp;
-              投資額: ¥{fmtJpy(position.investedJpy)}
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-              保有数量: {position.btcAmount.toFixed(8)} BTC
+              [{position.direction === "long" ? "ロング" : "ショート"}]
+              購入価格: ${position.btcPriceUsd.toLocaleString()} ／ 投資額: ¥
+              {fmtJpy(position.investedJpy)} ／ 保有数量:{" "}
+              {position.btcAmount.toFixed(8)} BTC
             </Typography>
 
             {/* 評価損益 */}
@@ -144,10 +173,8 @@ export function PortfolioSimulator({ currentPrice }: Props) {
               含み損益:{" "}
               {profitLoss !== null
                 ? `${profitLoss >= 0 ? "+" : ""}${fmtJpy(profitLoss)} 円`
-                : "---"}
-            </Typography>
-            <Typography variant="body1" sx={{ color: profitColor }}>
-              騰落率:{" "}
+                : "---"}{" "}
+              ／ 騰落率:{" "}
               {profitLossRate !== null
                 ? `${profitLossRate >= 0 ? "+" : ""}${profitLossRate.toFixed(2)}%`
                 : "---"}
