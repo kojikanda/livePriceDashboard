@@ -58,88 +58,6 @@ function fmtJpy(n: number) {
   return n.toLocaleString("ja-JP", { maximumFractionDigits: 0 });
 }
 
-// DataGridの型定義
-const columns: GridColDef[] = [
-  {
-    field: "direction",
-    headerName: "方向",
-    width: 90,
-    renderCell: (params) => (params.value === "long" ? "ロング" : "ショート"),
-  },
-  {
-    field: "btcPriceUsd",
-    headerName: "購入価格($)",
-    width: 130,
-    renderCell: (params) => `$${Number(params.value).toLocaleString()}`,
-  },
-  {
-    field: "investedJpy",
-    headerName: "投資額(円)",
-    width: 120,
-    renderCell: (params) => `¥${fmtJpy(params.value)}`,
-  },
-  {
-    field: "btcAmount",
-    headerName: "保有数量(BTC)",
-    width: 150,
-    renderCell: (params) => Number(params.value).toFixed(8),
-  },
-  {
-    field: "currentValueJpy",
-    headerName: "評価額(円)",
-    width: 120,
-    renderCell: (params) =>
-      params.value !== null ? `¥${fmtJpy(params.value)}` : "---",
-  },
-  {
-    field: "profitLoss",
-    headerName: "含み損益(円)",
-    width: 140,
-    renderCell: (params) => {
-      if (params.value === null) return "---";
-      const color = params.value >= 0 ? "success.main" : "error.main";
-      const sign = params.value >= 0 ? "+" : "";
-      return (
-        <Typography variant="body2" sx={{ color }}>
-          {sign}
-          {fmtJpy(params.value)}
-        </Typography>
-      );
-    },
-  },
-  {
-    field: "profitLossRate",
-    headerName: "騰落率(%)",
-    width: 110,
-    renderCell: (params) => {
-      if (params.value === null) return "---";
-      const color = params.value >= 0 ? "success.main" : "error.main";
-      const sign = params.value >= 0 ? "+" : "";
-      return (
-        <Typography variant="body2" sx={{ color }}>
-          {sign}
-          {Number(params.value).toFixed(2)}%
-        </Typography>
-      );
-    },
-  },
-  {
-    field: "actions",
-    headerName: "操作",
-    width: 80,
-    sortable: false,
-    renderCell: (params) => (
-      <Button
-        size="small"
-        color="error"
-        onClick={() => dispatch({ type: "REMOVE", id: params.row.id })}
-      >
-        決済
-      </Button>
-    ),
-  },
-];
-
 // Props
 type Props = {
   currentPrice: number | null;
@@ -173,6 +91,102 @@ export function PortfolioSimulator({ currentPrice }: Props) {
     loading: rateLoading,
     error: rateError,
   } = useUsdJpyRate();
+
+  // DataGridの型定義
+  const columns: GridColDef[] = [
+    {
+      field: "direction",
+      headerName: "方向",
+      width: 90,
+      renderCell: (params) => (params.value === "long" ? "ロング" : "ショート"),
+    },
+    {
+      field: "btcPriceUsd",
+      headerName: "購入価格($)",
+      width: 130,
+      renderCell: (params) => `$${Number(params.value).toLocaleString()}`,
+    },
+    {
+      field: "investedJpy",
+      headerName: "投資額(円)",
+      width: 120,
+      renderCell: (params) => `¥${fmtJpy(params.value)}`,
+    },
+    {
+      field: "btcAmount",
+      headerName: "保有数量(BTC)",
+      width: 150,
+      renderCell: (params) => Number(params.value).toFixed(8),
+    },
+    {
+      field: "currentValueJpy",
+      headerName: "評価額(円)",
+      width: 120,
+      renderCell: (params) =>
+        params.value !== null ? `¥${fmtJpy(params.value)}` : "---",
+    },
+    {
+      field: "profitLoss",
+      headerName: "含み損益(円)",
+      width: 140,
+      renderCell: (params) => {
+        if (params.value === null) return "---";
+        const color = params.value >= 0 ? "success.main" : "error.main";
+        const sign = params.value >= 0 ? "+" : "";
+        return (
+          <Box sx={{ display: "flex", alignItems: "center", height: "100%" }}>
+            <Typography variant="body2" sx={{ color }}>
+              {sign}
+              {fmtJpy(params.value)}
+            </Typography>
+          </Box>
+        );
+      },
+    },
+    {
+      field: "profitLossRate",
+      headerName: "騰落率(%)",
+      width: 110,
+      renderCell: (params) => {
+        if (params.value === null) return "---";
+        const color = params.value >= 0 ? "success.main" : "error.main";
+        const sign = params.value >= 0 ? "+" : "";
+        return (
+          <Box sx={{ display: "flex", alignItems: "center", height: "100%" }}>
+            <Typography variant="body2" sx={{ color }}>
+              {sign}
+              {Number(params.value).toFixed(2)}%
+            </Typography>
+          </Box>
+        );
+      },
+    },
+    {
+      field: "settlement",
+      headerName: "操作",
+      width: 80,
+      sortable: false,
+      renderCell: (params) => (
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            height: "100%",
+            width: "100%",
+          }}
+        >
+          <Button
+            variant="outlined"
+            size="small"
+            color="error"
+            onClick={() => dispatch({ type: "REMOVE", id: params.row.id })}
+          >
+            決済
+          </Button>
+        </Box>
+      ),
+    },
+  ];
 
   // 仮想購入実行メソッド
   const handleBuy = () => {

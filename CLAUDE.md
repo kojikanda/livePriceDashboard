@@ -94,6 +94,9 @@ Binance APIからは、価格だけでなく「取引量（Volume）」も取れ
 - `src/components/PriceChart.tsx`：Rechartsの折れ線グラフで価格を表示
   - `durationMin`・`onDurationChange` Props を追加
   - グラフヘッダーを flex レイアウトにし、タイトル左・MUI Select（5分/15分/30分）右に配置
+  - Tooltip を `content` prop によるカスタムコンポーネントに変更し、時刻・価格の両方を表示
+    - `labelFormatter` は Recharts バージョンやダークテーマとの相性問題があるため `content` prop を採用
+    - MUI の `Box`・`Typography` で描画しダークテーマに自然になじむスタイルを適用
 - `src/components/AlertSettings.tsx`：上限・下限価格の入力フィールドと、到達時のMUI Snackbar通知
   - `TextField` は `variant="outlined"`（ダークテーマに合わせ、明示的な色指定を廃止）
   - `Alert` は `variant="filled"` でダークテーマでも視認性を確保
@@ -108,21 +111,29 @@ Binance APIからは、価格だけでなく「取引量（Volume）」も取れ
   - ボラティリティアラート時：「急激な価格変動を検知しました！」Snackbar通知（`variant="filled"`）
   - `volatilityWindowSec`・`volatilityThreshold`・`chartDurationMin` の state を管理
   - `BROADCAST_CYCLE_SEC = 5` に基づき `maxHistory = (chartDurationMin * 60) / BROADCAST_CYCLE_SEC` を動的に算出
+  - `Container` の `maxWidth` を `"md"`（900px）から `"xl"`（1536px）に変更（DataGrid 全列表示のため）
 - `src/main.tsx`：MUI `ThemeProvider`（`mode: 'dark'`）と `CssBaseline` を追加し、全コンポーネントにダークテーマを適用
 - `src/hooks/useUsdJpyRate.ts`：Frankfurter API から USD/JPY レートを取得するカスタムフック
   - マウント時に1回だけ `https://api.frankfurter.app/latest?from=USD&to=JPY` を fetch（日次データのため）
   - `rate`・`loading`・`error` を返す
   - CORS回避のため Vite プロキシ経由（`/frankfurter/...`）でリクエストを送信
-- `src/components/PortfolioSimulator.tsx`：仮想ポートフォリオ・シミュレーターコンポーネント
-  - `Position` 型：`investedJpy`・`btcPriceUsd`・`usdJpyRate`・`btcAmount`・`direction` を保持
-  - `localStorage` でポジションを永続化（ページリロード後も保持）
-  - `useUsdJpyRate` フックで取得した実レートで JPY 換算（固定値 `150` から変更）
+- `src/components/PortfolioSimulator.tsx`：仮想ポートフォリオ・シミュレーターコンポーネント（複数ポジション対応済み）
+  - `Position` 型：`id`・`investedJpy`・`btcPriceUsd`・`usdJpyRate`・`btcAmount`・`direction` を保持
+    - `id` は `crypto.randomUUID()` で生成（DataGrid の行識別・削除に使用）
+  - `Action` 型（`ADD` / `REMOVE` / `CLEAR`）と `reducer` 関数で状態管理
+  - `useReducer` でポジション配列を管理（`useState<Position[]>` の代わりに採用）
+  - `localStorage`（キー: `btc_positions`）でポジション配列を永続化
+  - `useUsdJpyRate` フックで取得した実レートで JPY 換算
   - レート取得中・エラー時はカードに状態を表示し、仮想購入ボタンを無効化
-  - `ToggleButtonGroup` でロング（買い）/ ショート（空売り）を選択
-  - 損益計算：ロングは `(現在価格 − 購入価格) × 数量`、ショートは符号を反転 `(購入価格 − 現在価格) × 数量`
-  - 評価額・含み損益・騰落率をリアルタイム（5秒更新）で表示
-  - 損益プラス→緑（`success.main`）・マイナス→赤（`error.main`）で色分け
-  - 決済（リセット）ボタンでポジション消去
+  - `ToggleButtonGroup` でロング（買い）/ ショート（空売り）を選択（購入フォームは常時表示）
+  - 損益計算：ロングは `(現在価格 − 購入価格) × 数量`、ショートは符号を反転
+  - `rows` 配列として各ポジションの評価額・含み損益・騰落率を導出し DataGrid へ渡す
+  - `@mui/x-data-grid` の `DataGrid` でポジション一覧を表示
+    - 列：方向・購入価格・投資額・保有数量・評価額・含み損益・騰落率・決済ボタン
+    - `renderCell` を使うカラムは `<Box sx={{ height: "100%" }}>` で包む（垂直センタリングと白い点の防止）
+    - 決済列の `field` は `"settlement"`（`"actions"` は DataGrid の予約語のため使用しない）
+  - サマリー表示：平均取得単価（保有数量の加重平均）・合計投資額・合計損益
+  - 全決済ボタン（`dispatch({ type: "CLEAR" })`）で全ポジションを一括削除
   - MUI v9 では `inputProps` が廃止されており、`slotProps={{ htmlInput: { min: 1 } }}` を使用
 - `src/App.tsx`：`<PortfolioSimulator currentPrice={currentPrice} />` を追加
 - `vite.config.ts`：Frankfurter API への CORS 回避のため `server.proxy` を追加
@@ -164,7 +175,5 @@ livePriceDashboard/
 ### 次回以降の候補タスク
 
 - 複数銘柄（ETH、SOLなど）への対応
-- 仮想ポートフォリオ・シミュレーターの拡張（基本機能は実装済み）
-  - 複数ポジション対応（配列で管理、MUI `DataGrid` で一覧表示）
 - マーケット・センチメント（強気/弱気ゲージ）の可視化
 - Renderへのデプロイ

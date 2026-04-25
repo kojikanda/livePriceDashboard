@@ -88,9 +88,31 @@ export function PriceChart({
             tickFormatter={(v) => `$${Number(v).toLocaleString()}`}
           />
           <Tooltip
-            formatter={(value) => {
-              if (typeof value !== "number") return [String(value), "Price"];
-              return [`$${value.toLocaleString()}`, "Price"];
+            content={({ active, payload, label }) => {
+              // active: ホバー中かどうか
+              // payload: 各Lineの値の配列
+              // label: XAxisのdataKey（time文字列）
+              if (!active || !payload || payload.length === 0) return null;
+              const price = payload[0]?.value;
+              return (
+                <Box
+                  sx={{
+                    bgcolor: "background.paper",
+                    border: "1px solid",
+                    borderColor: "divider",
+                    borderRadius: 1,
+                    p: 1,
+                  }}
+                >
+                  <Typography variant="body2" color="text.secondary">
+                    時刻: {label}
+                  </Typography>
+                  <Typography variant="body2">
+                    価格: $
+                    {typeof price === "number" ? price.toLocaleString() : "---"}
+                  </Typography>
+                </Box>
+              );
             }}
           />
           <Line

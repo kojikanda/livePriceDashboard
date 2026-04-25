@@ -90,7 +90,7 @@ function App() {
   }, [currentPrice]);
 
   return (
-    <Container maxWidth="md">
+    <Container maxWidth="xl">
       <Box sx={{ py: 4 }}>
         <Typography variant="h4" gutterBottom>
           Live Price Dashboard
