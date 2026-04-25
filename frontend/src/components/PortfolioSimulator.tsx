@@ -9,6 +9,7 @@ import {
   ToggleButton,
   ToggleButtonGroup,
 } from "@mui/material";
+import { useUsdJpyRate } from "../hooks/useUsdJpyRate";
 
 // ポジションの型定義
 type Position = {
@@ -23,9 +24,6 @@ type Position = {
   // 買い方向(ロング/ショート)
   direction: "long" | "short";
 };
-
-// USD/JPYレート定義値
-const USD_JPY_RATE = 150;
 
 // Props
 type Props = {
@@ -49,17 +47,24 @@ export function PortfolioSimulator({ currentPrice }: Props) {
     return saved ? (JSON.parse(saved) as Position) : null;
   });
 
+  // 米ドル日本円レート取得カスタムフック
+  const {
+    rate: usdJpyRate,
+    loading: rateLoading,
+    error: rateError,
+  } = useUsdJpyRate();
+
   // 仮想購入実行メソッド
   const handleBuy = () => {
-    if (currentPrice === null) return;
+    if (currentPrice === null || usdJpyRate === null) return;
     const jpy = Number(investAmount);
     if (isNaN(jpy) || jpy <= 0) return;
 
     const newPosition: Position = {
       investedJpy: jpy,
       btcPriceUsd: currentPrice,
-      usdJpyRate: USD_JPY_RATE,
-      btcAmount: jpy / (currentPrice * USD_JPY_RATE),
+      usdJpyRate: usdJpyRate,
+      btcAmount: jpy / (currentPrice * usdJpyRate),
       direction: direction,
     };
     setPosition(newPosition);
@@ -116,6 +121,15 @@ export function PortfolioSimulator({ currentPrice }: Props) {
           仮想ポートフォリオ
         </Typography>
 
+        {/* レート表示エリア */}
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+          {rateLoading
+            ? "USD/JPY レート取得中..."
+            : rateError
+              ? `レート取得エラー: ${rateError}`
+              : `USD/JPY: ${usdJpyRate?.toFixed(2)}`}
+        </Typography>
+
         {position === null ? (
           // 購入フォーム
           <Box sx={{ display: "flex", gap: 1, alignItems: "flex-start" }}>
@@ -148,7 +162,11 @@ export function PortfolioSimulator({ currentPrice }: Props) {
             <Button
               variant="contained"
               onClick={handleBuy}
-              disabled={currentPrice === null || investAmount === ""}
+              disabled={
+                currentPrice === null ||
+                investAmount === "" ||
+                usdJpyRate === null
+              }
             >
               仮想購入
             </Button>
@@ -163,7 +181,6 @@ export function PortfolioSimulator({ currentPrice }: Props) {
               {fmtJpy(position.investedJpy)} ／ 保有数量:{" "}
               {position.btcAmount.toFixed(8)} BTC
             </Typography>
-
             {/* 評価損益 */}
             <Typography variant="body1">
               現在の評価額:{" "}
@@ -179,7 +196,6 @@ export function PortfolioSimulator({ currentPrice }: Props) {
                 ? `${profitLossRate >= 0 ? "+" : ""}${profitLossRate.toFixed(2)}%`
                 : "---"}
             </Typography>
-
             <Button
               variant="outlined"
               color="error"

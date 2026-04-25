@@ -109,10 +109,15 @@ Binance APIからは、価格だけでなく「取引量（Volume）」も取れ
   - `volatilityWindowSec`・`volatilityThreshold`・`chartDurationMin` の state を管理
   - `BROADCAST_CYCLE_SEC = 5` に基づき `maxHistory = (chartDurationMin * 60) / BROADCAST_CYCLE_SEC` を動的に算出
 - `src/main.tsx`：MUI `ThemeProvider`（`mode: 'dark'`）と `CssBaseline` を追加し、全コンポーネントにダークテーマを適用
+- `src/hooks/useUsdJpyRate.ts`：Frankfurter API から USD/JPY レートを取得するカスタムフック
+  - マウント時に1回だけ `https://api.frankfurter.app/latest?from=USD&to=JPY` を fetch（日次データのため）
+  - `rate`・`loading`・`error` を返す
+  - CORS回避のため Vite プロキシ経由（`/frankfurter/...`）でリクエストを送信
 - `src/components/PortfolioSimulator.tsx`：仮想ポートフォリオ・シミュレーターコンポーネント
   - `Position` 型：`investedJpy`・`btcPriceUsd`・`usdJpyRate`・`btcAmount`・`direction` を保持
   - `localStorage` でポジションを永続化（ページリロード後も保持）
-  - `USD_JPY_RATE = 150` の固定レートで JPY 換算（今後 API 取得に変更予定）
+  - `useUsdJpyRate` フックで取得した実レートで JPY 換算（固定値 `150` から変更）
+  - レート取得中・エラー時はカードに状態を表示し、仮想購入ボタンを無効化
   - `ToggleButtonGroup` でロング（買い）/ ショート（空売り）を選択
   - 損益計算：ロングは `(現在価格 − 購入価格) × 数量`、ショートは符号を反転 `(購入価格 − 現在価格) × 数量`
   - 評価額・含み損益・騰落率をリアルタイム（5秒更新）で表示
@@ -120,6 +125,8 @@ Binance APIからは、価格だけでなく「取引量（Volume）」も取れ
   - 決済（リセット）ボタンでポジション消去
   - MUI v9 では `inputProps` が廃止されており、`slotProps={{ htmlInput: { min: 1 } }}` を使用
 - `src/App.tsx`：`<PortfolioSimulator currentPrice={currentPrice} />` を追加
+- `vite.config.ts`：Frankfurter API への CORS 回避のため `server.proxy` を追加
+  - `/frankfurter` へのリクエストを `https://api.frankfurter.app` に転送（`changeOrigin: true`）
 
 ### 開発方針
 
@@ -137,7 +144,9 @@ livePriceDashboard/
 ├── frontend/
 │   ├── src/
 │   │   ├── types/price.ts
-│   │   ├── hooks/usePriceStream.ts
+│   │   ├── hooks/
+│   │   │   ├── usePriceStream.ts
+│   │   │   └── useUsdJpyRate.ts
 │   │   ├── components/
 │   │   │   ├── PriceChart.tsx
 │   │   │   ├── AlertSettings.tsx
@@ -145,6 +154,7 @@ livePriceDashboard/
 │   │   │   └── PortfolioSimulator.tsx
 │   │   ├── App.tsx
 │   │   └── main.tsx
+│   ├── vite.config.ts
 │   └── package.json
 └── .vscode/
     ├── launch.json
@@ -156,6 +166,5 @@ livePriceDashboard/
 - 複数銘柄（ETH、SOLなど）への対応
 - 仮想ポートフォリオ・シミュレーターの拡張（基本機能は実装済み）
   - 複数ポジション対応（配列で管理、MUI `DataGrid` で一覧表示）
-  - USD/JPY レートのリアルタイム取得（現在は `150` 固定）
 - マーケット・センチメント（強気/弱気ゲージ）の可視化
 - Renderへのデプロイ
