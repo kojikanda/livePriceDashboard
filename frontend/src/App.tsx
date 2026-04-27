@@ -16,6 +16,7 @@ import { PriceChart } from "./components/PriceChart";
 import { AlertSettings } from "./components/AlertSettings";
 import { VolatilitySettings } from "./components/VolatilitySettings";
 import { PortfolioSimulator } from "./components/PortfolioSimulator";
+import { MarketSentiment } from "./components/MarketSentiment";
 
 const SYMBOL = "BTC";
 const BROADCAST_CYCLE_SEC = 5;
@@ -48,8 +49,16 @@ function App() {
   );
   // グラフの表示期間(分)
   const [chartDurationMin, setChartDurationMin] = useState(5);
-  // 保持する価格の履歴数
-  const maxHistory = (chartDurationMin * 60) / BROADCAST_CYCLE_SEC + 1;
+
+  // グラフ表示に必要な件数
+  const chartHistorySize = (chartDurationMin * 60) / BROADCAST_CYCLE_SEC + 1;
+  // センチメント表示に必要な最低の時間(分)
+  const SENTIMENT_MIN_MIN = 30;
+  // センチメントの30分比較に必要な件数（最低限）
+  const SENTIMENT_MIN_HISTORY =
+    (SENTIMENT_MIN_MIN * 60) / BROADCAST_CYCLE_SEC + 1;
+  // 保持する価格の履歴数 (グラフ表示とセンチメント表示で必要最小限の数のうち、大きい方を保持する履歴数とする)
+  const maxHistory = Math.max(chartHistorySize, SENTIMENT_MIN_HISTORY);
 
   const {
     currentPrice,
@@ -188,6 +197,7 @@ function App() {
           onThresholdChange={setVolatilityThreshold}
         />
         <PortfolioSimulator currentPrice={currentPrice} />
+        <MarketSentiment history={history} currentPrice={currentPrice} />
         <PriceChart
           symbol={SYMBOL}
           data={history}

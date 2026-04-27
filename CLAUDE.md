@@ -81,6 +81,8 @@ Binance APIからは、価格だけでなく「取引量（Volume）」も取れ
   - `PriceData` に `timestamp`（ボラティリティ計算用）を追加
   - `PriceStreamOptions` に `volatilityWindowSec`・`volatilityThreshold` を追加
   - `PricePayload` はバックエンドが `{ price }` のみ送信するようになったため簡素化
+  - `SentimentResult`：センチメント集計結果（`upCount`・`downCount`・`neutralCount`・`upRatio`・`downRatio`・`windowSize`）
+  - `PriceChangeSummary`：騰落率サマリー1件（`label`・`minutesAgo`・`pct`）
 - `src/hooks/usePriceStream.ts`：Socket.ioで価格を受信するカスタムフック
   - ボラティリティ計算をフロントエンドで実施（タイムスタンプ基準のキュー管理）
   - `ChangePercentState` 型に計算時の設定値（`windowSec`・`threshold`）を持たせ、設定変更時に自動的に `null` を返す派生値パターンを採用
@@ -110,8 +112,12 @@ Binance APIからは、価格だけでなく「取引量（Volume）」も取れ
   - 変動率（%）を現在価格の横に表示（上昇→緑・下落→赤）
   - ボラティリティアラート時：「急激な価格変動を検知しました！」Snackbar通知（`variant="filled"`）
   - `volatilityWindowSec`・`volatilityThreshold`・`chartDurationMin` の state を管理
-  - `BROADCAST_CYCLE_SEC = 5` に基づき `maxHistory = (chartDurationMin * 60) / BROADCAST_CYCLE_SEC` を動的に算出
+  - `maxHistory` を `Math.max(chartHistorySize, SENTIMENT_MIN_HISTORY)` で算出
+    - `SENTIMENT_MIN_HISTORY = (30 * 60) / BROADCAST_CYCLE_SEC + 1`（30分前比較に必要な最低件数）
+    - `PriceChart` には `history.slice(-chartHistorySize)` でグラフ表示期間分だけ渡す
+    - `MarketSentiment` にはフル履歴（最大361件）を渡す
   - `Container` の `maxWidth` を `"md"`（900px）から `"xl"`（1536px）に変更（DataGrid 全列表示のため）
+  - `<MarketSentiment history={history} currentPrice={currentPrice} />` を追加
 - `src/main.tsx`：MUI `ThemeProvider`（`mode: 'dark'`）と `CssBaseline` を追加し、全コンポーネントにダークテーマを適用
 - `src/hooks/useUsdJpyRate.ts`：Frankfurter API から USD/JPY レートを取得するカスタムフック
   - マウント時に1回だけ `https://api.frankfurter.app/latest?from=USD&to=JPY` を fetch（日次データのため）
@@ -138,6 +144,19 @@ Binance APIからは、価格だけでなく「取引量（Volume）」も取れ
 - `src/App.tsx`：`<PortfolioSimulator currentPrice={currentPrice} />` を追加
 - `vite.config.ts`：Frankfurter API への CORS 回避のため `server.proxy` を追加
   - `/frankfurter` へのリクエストを `https://api.frankfurter.app` に転送（`changeOrigin: true`）
+- `src/utils/sentimentCalc.ts`：センチメント計算ロジックを UIコンポーネントから独立した関数として実装（バックエンド移行を想定）
+  - `calcSentiment(history, windowSize)`：直近N回の上昇/下落/中立の回数と比率を返す
+    - `upRatio`・`downRatio` の分母はニュートラルを除いた `upCount + downCount`（方向性のある動きのみで比較）
+    - 全てニュートラルの場合は `upRatio = downRatio = 0.5`（バー中央＝ニュートラル）
+  - `calcPriceChanges(history, currentPrice, now?)`：5分前・15分前・30分前との騰落率（%）を返す
+    - `now` を引数で受け取ることでテスト・バックエンド移行時に時刻を注入可能
+    - 履歴が足りず比較できない場合は `pct: null` を返す
+- `src/components/MarketSentiment.tsx`：Market Overview セクションのUIコンポーネント（新規）
+  - `useMemo` で `calcSentiment` / `calcPriceChanges` の結果をメモ化（価格更新ごとの再計算を最適化）
+  - センチメントバー：MUI `LinearProgress` 1本に緑バー（上昇率）＋赤背景（下落側）＋中央白線（ニュートラル基準）
+  - 集計ウィンドウ（10/20/30/50回）を `Select` で切り替え可能（コンポーネント内で state 管理）
+  - 騰落率サマリー：5分前・15分前・30分前をカード形式で横並び表示、上昇→緑・下落→赤
+  - `Typography` 内に `Select` を入れる場合は `component="div"` を指定（`<p>` 内 `<div>` によるハイドレーションエラー回避）
 
 ### 開発方針
 
@@ -158,11 +177,14 @@ livePriceDashboard/
 │   │   ├── hooks/
 │   │   │   ├── usePriceStream.ts
 │   │   │   └── useUsdJpyRate.ts
+│   │   ├── utils/
+│   │   │   └── sentimentCalc.ts
 │   │   ├── components/
 │   │   │   ├── PriceChart.tsx
 │   │   │   ├── AlertSettings.tsx
 │   │   │   ├── VolatilitySettings.tsx
-│   │   │   └── PortfolioSimulator.tsx
+│   │   │   ├── PortfolioSimulator.tsx
+│   │   │   └── MarketSentiment.tsx
 │   │   ├── App.tsx
 │   │   └── main.tsx
 │   ├── vite.config.ts
@@ -175,5 +197,4 @@ livePriceDashboard/
 ### 次回以降の候補タスク
 
 - 複数銘柄（ETH、SOLなど）への対応
-- マーケット・センチメント（強気/弱気ゲージ）の可視化
 - Renderへのデプロイ
