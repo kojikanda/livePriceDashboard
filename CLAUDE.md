@@ -157,6 +157,19 @@ Binance APIからは、価格だけでなく「取引量（Volume）」も取れ
   - 集計ウィンドウ（10/20/30/50回）を `Select` で切り替え可能（コンポーネント内で state 管理）
   - 騰落率サマリー：5分前・15分前・30分前をカード形式で横並び表示、上昇→緑・下落→赤
   - `Typography` 内に `Select` を入れる場合は `component="div"` を指定（`<p>` 内 `<div>` によるハイドレーションエラー回避）
+- `src/utils/volatilityCalc.ts`：ボラティリティスコア計算ロジック（新規）
+  - `VOLATILITY_WINDOW_SIZE = 30`：集計件数の定義値（変更容易なよう定数として切り出し）
+  - `calcVolatilityScore(history, windowSize)`：標準偏差ベースで 0〜100 のスコアを返す
+    - 変動係数（CV%）= 標準偏差 ÷ 平均 × 100 を算出し、`MAX_CV_PCT = 0.5`（%）をスコア 100 に対応させて線形変換
+    - データ不足（2件未満）の場合は `null` を返す
+- `src/components/VolatilityScore.tsx`：ボラティリティスコアのUIコンポーネント（新規）
+  - `useMemo([history])` で `calcVolatilityScore` をメモ化し、`history` が変わったとき（＝価格更新時・5秒おき）のみ再計算
+  - `@mui/x-charts` の `Gauge` コンポーネントで半円形ゲージを表示
+    - `gaugeClasses.valueArc` の `fill` をスコアに応じて動的に変更（青→緑→オレンジ→赤）
+  - スコア 80 超でアラート：カード背景を赤みがかった色に変更し、`Chip`（`WarningAmberIcon` + "High Volatility Alert"）を表示
+  - `getScoreColor(score)`・`getScoreLabel(score)` を純粋関数として分離（UI ロジックの見通しを良くするため）
+  - `Typography variant="caption"` は `<span>` として描画されるため `sx={{ display: "block" }}` で改行を強制
+- `src/App.tsx`：`<VolatilityScore history={history} />` を MarketSentiment の直後に追加
 
 ### 開発方針
 
@@ -178,13 +191,15 @@ livePriceDashboard/
 │   │   │   ├── usePriceStream.ts
 │   │   │   └── useUsdJpyRate.ts
 │   │   ├── utils/
-│   │   │   └── sentimentCalc.ts
+│   │   │   ├── sentimentCalc.ts
+│   │   │   └── volatilityCalc.ts
 │   │   ├── components/
 │   │   │   ├── PriceChart.tsx
 │   │   │   ├── AlertSettings.tsx
 │   │   │   ├── VolatilitySettings.tsx
 │   │   │   ├── PortfolioSimulator.tsx
-│   │   │   └── MarketSentiment.tsx
+│   │   │   ├── MarketSentiment.tsx
+│   │   │   └── VolatilityScore.tsx
 │   │   ├── App.tsx
 │   │   └── main.tsx
 │   ├── vite.config.ts

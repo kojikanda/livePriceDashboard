@@ -17,6 +17,7 @@ import { AlertSettings } from "./components/AlertSettings";
 import { VolatilitySettings } from "./components/VolatilitySettings";
 import { PortfolioSimulator } from "./components/PortfolioSimulator";
 import { MarketSentiment } from "./components/MarketSentiment";
+import { VolatilityScore } from "./components/VolatilityScore";
 
 const SYMBOL = "BTC";
 const BROADCAST_CYCLE_SEC = 5;
@@ -198,6 +199,7 @@ function App() {
         />
         <PortfolioSimulator currentPrice={currentPrice} />
         <MarketSentiment history={history} currentPrice={currentPrice} />
+        <VolatilityScore history={history} />
         <PriceChart
           symbol={SYMBOL}
           data={history}
