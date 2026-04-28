@@ -70,7 +70,6 @@ export function VolatilityScore({ history }: Props) {
       <CardContent>
         {/* ヘッダー行 */}
         <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1 }}>
-          <Typography variant="h6">Volatility Score</Typography>
           {isAlert && (
             <Chip
               icon={<WarningAmberIcon />}

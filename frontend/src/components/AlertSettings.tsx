@@ -63,20 +63,18 @@ export function AlertSettings({ symbol, currentPrice }: Props) {
   return (
     <Box sx={{ mt: 4 }}>
       <Typography variant="h6" gutterBottom>
-        Alert Settings
+        ターゲット価格アラート
       </Typography>
       <Box sx={{ display: "flex", gap: 2 }}>
         <TextField
-          variant="outlined"
-          label="Target High"
+          label="上限価格"
           type="number"
           value={targetHigh}
           onChange={(e) => setTargetHigh(e.target.value)}
           size="small"
         />
         <TextField
-          variant="outlined"
-          label="Target Low"
+          label="下限価格"
           type="number"
           value={targetLow}
           onChange={(e) => setTargetLow(e.target.value)}

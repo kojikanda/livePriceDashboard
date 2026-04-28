@@ -17,7 +17,6 @@ import {
 import type { PriceData } from "../types/price";
 
 type Props = {
-  symbol: string;
   data: PriceData[];
   durationMin: number;
   onDurationChange: (min: number) => void;
@@ -25,18 +24,12 @@ type Props = {
 
 /**
  * 価格表示グラフコンポーネント
- * @param props.symbol 銘柄のシンボル
  * @param props.data 価格情報の配列
  * @param props.durationMin グラフの表示期間(分)
  * @param props.onDurationChange グラフの表示期間変更時にコールするイベントハンドラ
  * @returns 価格表示グラフコンポーネント
  */
-export function PriceChart({
-  symbol,
-  data,
-  durationMin,
-  onDurationChange,
-}: Props) {
+export function PriceChart({ data, durationMin, onDurationChange }: Props) {
   // 価格のリスト
   const prices = data.map((d) => d.price);
   // 価格の最小値
@@ -52,12 +45,11 @@ export function PriceChart({
       <Box
         sx={{
           display: "flex",
-          justifyContent: "space-between",
+          justifyContent: "flex-end",
           alignItems: "center",
           mb: 1,
         }}
       >
-        <Typography variant="h6">{symbol} Price Chart</Typography>
         <FormControl size="small" sx={{ minWidth: 100 }}>
           <InputLabel>期間</InputLabel>
           <Select

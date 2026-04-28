@@ -1,12 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { io } from "socket.io-client";
 import type {
   PriceData,
   PriceStreamOptions,
   PricePayload,
 } from "../types/price";
-
-const socket = io("http://localhost:3001");
+import { socket } from "../lib/socket";
 
 // ボラティリティアラートの判定で使用する算出結果、及び、変化率算出で使用した設定値を保持する型
 type ChangePercentState = {

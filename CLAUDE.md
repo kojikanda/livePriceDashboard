@@ -69,30 +69,40 @@ Binance APIからは、価格だけでなく「取引量（Volume）」も取れ
 #### Backend（`backend/src/index.ts`）
 
 - Express + Socket.io サーバーの構築
-- Binance パブリック WebSocket API（`btcusdt@trade`）に接続し、BTC価格をリアルタイム取得
-- 取得した価格を `io.emit("btcPrice", { price })` で全クライアントにブロードキャスト
-- 切断時の自動再接続ロジック（3秒後）
+- Binance combined stream WebSocket API（`/stream?streams=btcusdt@trade/ethusdt@trade/solusdt@trade`）に接続し、3銘柄の価格をリアルタイム取得
+  - combined stream のメッセージ形式: `{ stream: "btcusdt@trade", data: { p: "..." } }`
+  - `SYMBOL_MAP`（`{ btcusdt: "BTC", ethusdt: "ETH", solusdt: "SOL" }`）でストリーム名を銘柄名に変換
+  - 3銘柄の価格が全て揃った時点で `io.emit("priceUpdate", { BTC, ETH, SOL })` を送信
 - ブロードキャスト周期: `BLOADCAST_CYCLE = 5000`（msec）で5秒ごとに送信
 - ボラティリティ関連のロジックはフロントエンドに移管済み（バックエンドは価格配信のみ）
 
 #### Frontend
 
 - `src/types/price.ts`：`PriceData`・`PriceStreamOptions`・`PricePayload` の型定義
+  - `CryptoSymbol`：`"BTC" | "ETH" | "SOL"` の Union 型（銘柄を型安全に扱うため）
   - `PriceData` に `timestamp`（ボラティリティ計算用）を追加
-  - `PriceStreamOptions` に `volatilityWindowSec`・`volatilityThreshold` を追加
-  - `PricePayload` はバックエンドが `{ price }` のみ送信するようになったため簡素化
+  - `PriceStreamOptions` の `symbol` を `CryptoSymbol` 型に変更
+  - `PricePayload`：`Record<CryptoSymbol, number>`（バックエンドが3銘柄分をまとめて送信）
   - `SentimentResult`：センチメント集計結果（`upCount`・`downCount`・`neutralCount`・`upRatio`・`downRatio`・`windowSize`）
   - `PriceChangeSummary`：騰落率サマリー1件（`label`・`minutesAgo`・`pct`）
+- `src/lib/socket.ts`：Socket.io クライアントのシングルトンインスタンス（新規）
+  - `export const socket = io("http://localhost:3001")` で1つの接続を全フックで共有
+  - 複数フックが同じ URL に接続しても socket が多重生成されないよう分離
 - `src/hooks/usePriceStream.ts`：Socket.ioで価格を受信するカスタムフック
+  - `"priceUpdate"` イベントを購読し、`data[symbol]` で自銘柄の価格だけを取り出す
+  - ハンドラを名前付き関数にして `socket.off("priceUpdate", handler)` で自分のハンドラだけ解除（3銘柄が同じイベントを購読するため必須）
   - ボラティリティ計算をフロントエンドで実施（タイムスタンプ基準のキュー管理）
   - `ChangePercentState` 型に計算時の設定値（`windowSec`・`threshold`）を持たせ、設定変更時に自動的に `null` を返す派生値パターンを採用
   - `windowSecRef`・`thresholdRef`・`maxHistoryRef` で最新設定値を保持し、socket コールバックの再登録を防止
   - socket イベント登録の `useEffect` は `[symbol]` のみに依存（設定値変更では再登録しない）
   - 各 ref は対応する `useEffect` で最新値に同期（`useEffect(() => { ref.current = value }, [value])` パターン）
   - 設定値変更時の `useEffect`：ウィンドウが変わった場合のみ古い履歴を削除、閾値のみの変更では履歴をそのまま保持
-  - `removeDataOutsideWindow` 関数：`history[1]` の age で判定し、参照点となる最古エントリが早期削除されないよう制御（`history[0]` で判定すると90%閾値に届く前に削除され表示されなくなるバグを防ぐ）
+  - `removeDataOutsideWindow` 関数：`history[1]` の age で判定し、参照点となる最古エントリが早期削除されないよう制御
   - return 時に `history.slice(-maxHistory)` で派生値として履歴をトリム（effect 内での setState による cascading renders を回避）
   - `changePercent`・`showVolatilityAlert`・`setShowVolatilityAlert` を返す
+- `src/hooks/useCurrentPrices.ts`：3銘柄の現在価格のみを返す軽量フック（新規）
+  - PortfolioSimulator 専用（履歴・ボラティリティ計算不要）
+  - `"priceUpdate"` イベントを購読し `Record<CryptoSymbol, number | null>` を返す
 - `src/components/PriceChart.tsx`：Rechartsの折れ線グラフで価格を表示
   - `durationMin`・`onDurationChange` Props を追加
   - グラフヘッダーを flex レイアウトにし、タイトル左・MUI Select（5分/15分/30分）右に配置
@@ -105,19 +115,24 @@ Binance APIからは、価格だけでなく「取引量（Volume）」も取れ
 - `src/components/VolatilitySettings.tsx`：監視ウィンドウ（秒）・アラート閾値（%）の設定UI
   - ローカルの文字列 state で入力中の中間状態を保持し、有効値のときのみ親へ通知
   - `error`・`helperText` Props でバリデーションエラーを視覚的に表示
-- `src/App.tsx`：価格表示カード＋各種視覚効果を組み合わせて表示
-  - ボラティリティアラート時：カード赤枠 + `::after` 疑似要素による背景パルスアニメーション
-  - 価格フラッシュ：上昇→緑・下落→赤のテキストカラーアニメーション（`key` トリックで再起動）
-  - トレンドアイコン：`TrendingUp` / `TrendingDown`（`@mui/icons-material`）
-  - 変動率（%）を現在価格の横に表示（上昇→緑・下落→赤）
-  - ボラティリティアラート時：「急激な価格変動を検知しました！」Snackbar通知（`variant="filled"`）
-  - `volatilityWindowSec`・`volatilityThreshold`・`chartDurationMin` の state を管理
+- `src/components/SymbolPanel.tsx`：1銘柄分の表示をまとめたコンポーネント（新規）
+  - `symbol: CryptoSymbol` を Props として受け取り、どの銘柄でも同じ構成で表示
+  - `usePriceStream` を内部で呼び出し、価格・履歴・ボラティリティを管理
+  - `volatilityWindowSec`・`volatilityThreshold`・`chartDurationMin` の state を銘柄ごとに独立管理
   - `maxHistory` を `Math.max(chartHistorySize, SENTIMENT_MIN_HISTORY)` で算出
-    - `SENTIMENT_MIN_HISTORY = (30 * 60) / BROADCAST_CYCLE_SEC + 1`（30分前比較に必要な最低件数）
-    - `PriceChart` には `history.slice(-chartHistorySize)` でグラフ表示期間分だけ渡す
-    - `MarketSentiment` にはフル履歴（最大361件）を渡す
-  - `Container` の `maxWidth` を `"md"`（900px）から `"xl"`（1536px）に変更（DataGrid 全列表示のため）
-  - `<MarketSentiment history={history} currentPrice={currentPrice} />` を追加
+  - 価格カード（常時表示）：フラッシュアニメーション・トレンドアイコン・変動率を含む
+    - `variant="h4"` で表示（3カラム並びに合わせてサイズを調整）
+    - ボラティリティアラート時：カード赤枠 + `::after` 疑似要素による背景パルスアニメーション
+  - アコーディオン構成（銘柄ごとに独立して開閉可能）:
+    - チャート（`defaultExpanded`）・マーケットセンチメント・ボラティリティスコア・アラート設定
+    - `AccordionSummary` に `bgcolor: "action.hover"` を指定し `AccordionDetails` と視覚的に区別
+  - ボラティリティアラート Snackbar：メッセージ先頭に `{symbol}：` を付けて銘柄を明示
+- `src/App.tsx`：3銘柄グリッド＋ポートフォリオアコーディオンのシンプルな構成に刷新
+  - `SYMBOLS: CryptoSymbol[] = ["BTC", "ETH", "SOL"]` を `.map()` で回して `SymbolPanel` を3つ並べる
+  - CSS Grid（`repeat(3, 1fr)` + `alignItems: "start"` + `"& > *": { minWidth: 0 }`）で3カラムレイアウト
+    - `minWidth: 0` が必須：指定しないとコンテンツの最小幅が `1fr` を上回りグリッドが右にはみ出す
+  - `PortfolioSimulator` を `Accordion` で包み、ページ下部に配置（props なし）
+  - `Container maxWidth="xl"`（1536px）で全体を制約・中央揃え
 - `src/main.tsx`：MUI `ThemeProvider`（`mode: 'dark'`）と `CssBaseline` を追加し、全コンポーネントにダークテーマを適用
 - `src/hooks/useUsdJpyRate.ts`：Frankfurter API から USD/JPY レートを取得するカスタムフック
   - マウント時に1回だけ `https://api.frankfurter.app/latest?from=USD&to=JPY` を fetch（日次データのため）
@@ -141,7 +156,15 @@ Binance APIからは、価格だけでなく「取引量（Volume）」も取れ
   - サマリー表示：平均取得単価（保有数量の加重平均）・合計投資額・合計損益
   - 全決済ボタン（`dispatch({ type: "CLEAR" })`）で全ポジションを一括削除
   - MUI v9 では `inputProps` が廃止されており、`slotProps={{ htmlInput: { min: 1 } }}` を使用
-- `src/App.tsx`：`<PortfolioSimulator currentPrice={currentPrice} />` を追加
+- `src/components/PortfolioSimulator.tsx`：3銘柄対応に刷新（Props なし・自己完結型）
+  - `useCurrentPrices` フックで3銘柄の現在価格を取得
+  - `Position` 型に `symbol: CryptoSymbol` を追加、`btcPriceUsd` → `entryPriceUsd`、`btcAmount` → `coinAmount` に改名
+  - `localStorage` キーを `"portfolio_positions"` に変更（データ構造変更のため）
+  - 購入フォームに銘柄選択 `ToggleButtonGroup`（BTC/ETH/SOL）を追加
+  - DataGrid に「銘柄」カラムを追加、保有数量は銘柄ごとの小数点桁数で表示（BTC:8・ETH:6・SOL:4）
+  - P/L 計算は `currentPrices[p.symbol]` で銘柄ごとの現在価格を使用
+  - 合計損益は全ポジションの価格が揃った場合のみ表示
+  - 平均取得単価は削除（異なる銘柄が混在するため意味をなさない）
 - `vite.config.ts`：Frankfurter API への CORS 回避のため `server.proxy` を追加
   - `/frankfurter` へのリクエストを `https://api.frankfurter.app` に転送（`changeOrigin: true`）
 - `src/utils/sentimentCalc.ts`：センチメント計算ロジックを UIコンポーネントから独立した関数として実装（バックエンド移行を想定）
@@ -169,7 +192,9 @@ Binance APIからは、価格だけでなく「取引量（Volume）」も取れ
   - スコア 80 超でアラート：カード背景を赤みがかった色に変更し、`Chip`（`WarningAmberIcon` + "High Volatility Alert"）を表示
   - `getScoreColor(score)`・`getScoreLabel(score)` を純粋関数として分離（UI ロジックの見通しを良くするため）
   - `Typography variant="caption"` は `<span>` として描画されるため `sx={{ display: "block" }}` で改行を強制
-- `src/App.tsx`：`<VolatilityScore history={history} />` を MarketSentiment の直後に追加
+- `src/App.tsx`：`<VolatilityScore history={history} />` を MarketSentiment の直後に追加（旧実装。現在は SymbolPanel 内に移動済み）
+- `frontend/src/index.css`：`#root { width: 1126px }` を `width: 100%` に変更
+  - 固定幅を外し、Container の `maxWidth="xl"` に幅制御を委ねることで3カラムグリッドが正しく中央揃えに
 
 ### 開発方針
 
@@ -187,13 +212,17 @@ livePriceDashboard/
 ├── frontend/
 │   ├── src/
 │   │   ├── types/price.ts
+│   │   ├── lib/
+│   │   │   └── socket.ts           （socket シングルトン）
 │   │   ├── hooks/
 │   │   │   ├── usePriceStream.ts
+│   │   │   ├── useCurrentPrices.ts （PortfolioSimulator 用軽量フック）
 │   │   │   └── useUsdJpyRate.ts
 │   │   ├── utils/
 │   │   │   ├── sentimentCalc.ts
 │   │   │   └── volatilityCalc.ts
 │   │   ├── components/
+│   │   │   ├── SymbolPanel.tsx      （銘柄ごとの表示をまとめたコンポーネント）
 │   │   │   ├── PriceChart.tsx
 │   │   │   ├── AlertSettings.tsx
 │   │   │   ├── VolatilitySettings.tsx
@@ -201,6 +230,7 @@ livePriceDashboard/
 │   │   │   ├── MarketSentiment.tsx
 │   │   │   └── VolatilityScore.tsx
 │   │   ├── App.tsx
+│   │   ├── index.css
 │   │   └── main.tsx
 │   ├── vite.config.ts
 │   └── package.json
@@ -211,5 +241,4 @@ livePriceDashboard/
 
 ### 次回以降の候補タスク
 
-- 複数銘柄（ETH、SOLなど）への対応
 - Renderへのデプロイ

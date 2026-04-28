@@ -47,10 +47,6 @@ export function MarketSentiment({ history, currentPrice }: Props) {
   return (
     <Card sx={{ mt: 2 }}>
       <CardContent>
-        <Typography variant="h6" gutterBottom>
-          Market Overview
-        </Typography>
-
         {/* センチメントバー */}
         <Box
           sx={{
@@ -77,7 +73,7 @@ export function MarketSentiment({ history, currentPrice }: Props) {
                 </MenuItem>
               ))}
             </Select>
-            回のセンチメント
+            回
           </Typography>
 
           {/* 上昇/下落のカウント */}
