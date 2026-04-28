@@ -81,7 +81,7 @@ export function usePriceStream({
       ? changePercentState.value
       : null;
 
-  // 設定値が変わったらときの処理
+  // 設定値が変わったときの処理
   useEffect(() => {
     const now = Date.now();
     const newWindowMs = volatilityWindowSec * 1000;
@@ -104,26 +104,24 @@ export function usePriceStream({
 
   // socketイベントの登録・解除（設定値の変更には反応しない）
   useEffect(() => {
-    // WebSocketでやり取りするイベント名
-    const eventName = `${symbol.toLowerCase()}Price`;
-
-    // WebSocketでデータを受信したときのイベント処理を追加
-    socket.on(eventName, (data: PricePayload) => {
+    const handler = (data: PricePayload) => {
+      // symbolに対応した銘柄の価格を取得
+      const price = data[symbol];
       const now = Date.now();
       const windowMs = windowSecRef.current * 1000;
 
       // 現在の価格をstateに設定
       const entry: PriceData = {
         time: new Date().toLocaleTimeString(),
-        price: data.price,
+        price,
         timestamp: now,
       };
-      setCurrentPrice(data.price);
+      setCurrentPrice(price);
       setHistory((prev) => [...prev, entry].slice(-maxHistoryRef.current));
 
       // ボラティリティアラートで使用する値を設定
       const vHistory = volatilityHistoryRef.current;
-      vHistory.push({ timestamp: now, price: data.price });
+      vHistory.push({ timestamp: now, price });
       // 監視ウィンドウから外れる値は削除
       removeDataOutsideWindow(vHistory, now, windowMs);
 
@@ -134,24 +132,27 @@ export function usePriceStream({
         // 誤差を考慮し、監視ウィンドウの90%以上でアラート判定を行う
         if (elapsedSec >= windowSecRef.current * 0.9) {
           // 変化率算出
-          const pct =
-            ((data.price - oldestEntry.price) / oldestEntry.price) * 100;
+          const pct = ((price - oldestEntry.price) / oldestEntry.price) * 100;
           // 計算時の設定値もセットで保存
           setChangePercentState({
             value: pct,
             windowSec: windowSecRef.current,
             threshold: thresholdRef.current,
           });
+          // アラート判定
           if (Math.abs(pct) > thresholdRef.current) {
             setShowVolatilityAlert(true);
           }
         }
       }
-    });
+    };
+
+    // WebSocketでデータを受信したときのイベント処理を追加
+    socket.on("priceUpdate", handler);
 
     // 切断が切れたときはイベントを解除
     return () => {
-      socket.off(eventName);
+      socket.off("priceUpdate", handler);
     };
   }, [symbol]);
 

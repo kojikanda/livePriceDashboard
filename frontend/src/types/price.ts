@@ -8,21 +8,28 @@ export type PriceData = {
 };
 
 /**
+ * 銘柄
+ */
+export type CryptoSymbol = "BTC" | "ETH" | "SOL";
+
+/**
  * 銘柄情報
  */
 export type PriceStreamOptions = {
-  symbol: string;
+  // 銘柄
+  symbol: CryptoSymbol;
+  // 価格の履歴数
   maxHistory: number;
+  // ボラティリティアラートの監視ウィンドウ(秒)
   volatilityWindowSec: number;
+  // ボラティリティアラートの閾値(%)
   volatilityThreshold: number;
 };
 
 /**
- * サーバから受信するデータの型
+ * サーバから受信するデータの型（3銘柄分をまとめて受信）
  */
-export type PricePayload = {
-  price: number;
-};
+export type PricePayload = Record<CryptoSymbol, number>;
 
 /**
  * センチメント（強気/弱気）の集計結果
