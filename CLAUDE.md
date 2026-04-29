@@ -112,6 +112,19 @@ Binance APIからは、価格だけでなく「取引量（Volume）」も取れ
 - `src/components/AlertSettings.tsx`：上限・下限価格の入力フィールドと、到達時のMUI Snackbar通知
   - `TextField` は `variant="outlined"`（ダークテーマに合わせ、明示的な色指定を廃止）
   - `Alert` は `variant="filled"` でダークテーマでも視認性を確保
+  - **ターゲット価格アラート自動再設定機能を追加**
+    - `OFFSET_RATE = 0.01`（1%）定数でオフセット率を定義
+    - `autoReset` state（boolean）＋ `Switch` + `FormControlLabel` で自動更新トグルを追加
+    - `setTargetValueByAutoReset(cPrice, isExceedUpperLimit)` を `useCallback` でラップして共通化
+      - アラート発火時に `newHigh = cPrice * (1 + OFFSET_RATE)`・`newLow = cPrice * (1 - OFFSET_RATE)` で再設定
+      - `useCallback` の依存配列は `[symbol]`（setter は React が安定を保証するため不要）
+    - Snackbar メッセージに新しい上限・下限価格を表示
+    - `alertedRef`（`{ high: boolean; low: boolean }`）で発火済みフラグを管理し、自動再設定後の即時再発火を防止
+  - **入力中アラート一時停止機能を追加**
+    - `focusedField` state（`"high" | "low" | null`）でフォーカス中のフィールドを管理
+    - `useEffect` 先頭で `if (focusedField !== null) return` としてチェックをスキップ
+    - `onFocus`/`onBlur` で `focusedField` を更新
+    - `helperText` をフォーカス中のフィールドのみ `"入力中はアラートを一時停止しています"` と表示（非フォーカス時は `" "` でレイアウト高さを維持）
 - `src/components/VolatilitySettings.tsx`：監視ウィンドウ（秒）・アラート閾値（%）の設定UI
   - ローカルの文字列 state で入力中の中間状態を保持し、有効値のときのみ親へ通知
   - `error`・`helperText` Props でバリデーションエラーを視覚的に表示
@@ -165,6 +178,9 @@ Binance APIからは、価格だけでなく「取引量（Volume）」も取れ
   - P/L 計算は `currentPrices[p.symbol]` で銘柄ごとの現在価格を使用
   - 合計損益は全ポジションの価格が揃った場合のみ表示
   - 平均取得単価は削除（異なる銘柄が混在するため意味をなさない）
+- `frontend/eslint.config.js`：`react-hooks/set-state-in-effect` ルールを無効化
+  - `eslint-plugin-react-hooks` v7 で追加された React Compiler 向けルール
+  - React Compiler を使用していないため `'react-hooks/set-state-in-effect': 'off'` を設定
 - `vite.config.ts`：Frankfurter API への CORS 回避のため `server.proxy` を追加
   - `/frankfurter` へのリクエストを `https://api.frankfurter.app` に転送（`changeOrigin: true`）
 - `src/utils/sentimentCalc.ts`：センチメント計算ロジックを UIコンポーネントから独立した関数として実装（バックエンド移行を想定）
