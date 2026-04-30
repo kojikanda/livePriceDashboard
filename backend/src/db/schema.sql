@@ -1,0 +1,39 @@
+CREATE TABLE users (
+  id SERIAL PRIMARY KEY,
+  email VARCHAR(255) UNIQUE NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE target_price_alerts (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  symbol VARCHAR(10) NOT NULL,
+  target_high NUMERIC,
+  target_low NUMERIC,
+  auto_reset BOOLEAN NOT NULL DEFAULT FALSE,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(user_id, symbol)
+);
+
+CREATE TABLE volatility_alert_settings (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  symbol VARCHAR(10) NOT NULL,
+  window_sec INTEGER NOT NULL DEFAULT 60,
+  threshold NUMERIC NOT NULL DEFAULT 1.0,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(user_id, symbol)
+);
+
+CREATE TABLE portfolio_positions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  symbol VARCHAR(10) NOT NULL,
+  direction VARCHAR(5) NOT NULL CHECK (direction IN ('long', 'short')),
+  invested_jpy NUMERIC NOT NULL,
+  entry_price_usd NUMERIC NOT NULL,
+  usd_jpy_rate NUMERIC NOT NULL,
+  coin_amount NUMERIC NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);

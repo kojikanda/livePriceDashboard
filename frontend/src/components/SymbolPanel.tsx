@@ -247,7 +247,7 @@ export function SymbolPanel({ symbol }: Props) {
         </AccordionDetails>
       </Accordion>
 
-      {/* ボラティリティアラート */}
+      {/* ボラティリティアラートのSnackbar表示 */}
       <Snackbar
         open={showVolatilityAlert}
         autoHideDuration={5000}

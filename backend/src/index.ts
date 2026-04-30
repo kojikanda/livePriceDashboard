@@ -1,16 +1,36 @@
+import "dotenv/config";
 import express from "express";
 import { createServer } from "http";
 import { Server } from "socket.io";
 import WebSocket from "ws";
+import cors from "cors";
+import cookieParser from "cookie-parser";
+import authRouter from "./routes/auth.js";
+import { applySocketAuthMiddleware } from "./auth/middleware.js";
 
 const app = express();
 // Socket.ioはExpressを直接使えないため、HTTPサーバーをラップする
 const httpServer = createServer(app);
 // WebSocket通信サーバ
 const io = new Server(httpServer, {
-  // CORS設定。現状は全ポートを許可。
-  cors: { origin: "*" },
+  // CORS設定
+  cors: {
+    origin: "http://localhost:5173",
+    credentials: true,
+  },
 });
+
+// Socket.IOの認証ミドルウェアを適用
+app.use(cors({ origin: "http://localhost:5173", credentials: true }));
+// JSONリクエストのパース
+app.use(express.json());
+// クッキーのパース
+app.use(cookieParser());
+// 認証関連のルーティングを追加
+app.use("/auth", authRouter);
+
+// Socket.io認証ミドルウェアを適用
+applySocketAuthMiddleware(io);
 
 // ブロードキャスト周期(msec)
 const BLOADCAST_CYCLE = 5000;
