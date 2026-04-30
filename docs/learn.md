@@ -421,6 +421,52 @@ logger.error("DB接続失敗"); // レベル: エラー
 RenderはJSON形式のログをそのまま受け取れるので、pinoとの相性が良い。<br>
 ログレベルでフィルタリングしたり、外部のログ管理サービス（Datadog、Logtailなど）に転送することもできる。
 
+## ■ミドルウェアチェーン(middleware.ts)
+
+### ◯ミドルウェアチェーンの仕組み
+
+Socket.io の接続処理は複数のミドルウェアを順番に通過する「チェーン」になっている。
+
+```
+接続リクエスト
+    ↓
+[認証ミドルウェア] → next() で次へ進む or next(Error) で止める
+    ↓
+[次のミドルウェア or 接続完了]
+```
+
+next は「チェーンを前に進める（もしくはエラーで止める）ためのドア」のようなもの。
+
+### ◯nextの2つの使い方
+
+```typescript
+// 認証OK → 次の処理へ進む（引数なし）
+next();
+
+// 認証NG → 接続を拒否してエラーを返す（Errorを渡す）
+next(new Error("認証が必要です"));
+```
+
+next(new Error(...)) を呼ぶと、Socket.io はそのエラーをフロントエンドに返し、接続を拒否する。<br>
+フロントエンドでは socket.on("connect_error", (err) => ...) でこのエラーを受け取れる。
+
+### ◯なぜ return を付けているのか
+
+```typescript
+if (!cookieHeader) return next(new Error("認証が必要です"));
+```
+
+returnを付けているのは、next()を呼んだ後に後続のコードが実行されないようにするため。<br>
+next()自体は処理を止める機能を持っていないので、returnで明示的に関数を終わらせている。
+
+#### return がないと：
+
+```typescript
+if (!cookieHeader) next(new Error("認証が必要です")); // エラーを返すが...
+// ↓ return がなければここも実行されてしまう
+const cookies = parse(cookieHeader); // undefined に対して parse が走る → バグ
+```
+
 ---
 
 <br>
