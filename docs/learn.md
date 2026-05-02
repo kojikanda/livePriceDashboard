@@ -467,6 +467,68 @@ if (!cookieHeader) next(new Error("認証が必要です")); // エラーを返�
 const cookies = parse(cookieHeader); // undefined に対して parse が走る → バグ
 ```
 
+## ■Expressのapp.use()
+
+app.use()は、ミドルウェアを登録するためのメソッド。<br>
+すべてのリクエストに対して実行される処理を定義できる。
+
+app.use()で定義した処理は、パスやHTTPメソッドに関わらず、すべてのリクエストで実行される。
+
+```typescript
+app.use((req, res, next) => {
+  console.log("どんなリクエストでも実行される!");
+  next(); // 次の処理に進む
+});
+```
+
+## ■requestとimport
+
+- requireは 「CommonJS」 形式によるモジュールの読み込み方法。
+- importは 「ECMAScript」 形式によるモジュールの読み込み方法。
+
+requireを定めたCommonJSは 2009年に始まったプロジェクト で、歴史が長い。nodeの公式ドキュメントを見ると、2011年の記事に利用方法の記載が行われている。
+
+importによるモジュール読み込みが定義されたのは ES2015(ES6) から。 このため、import形式の方が新しい読み込み方法となる。
+
+GitHub で node.js のコードを眺めていると、「ESM」とか「ESModule」という略語を目にすることがある。これは「ECMAScript Module」の略称を指す。
+
+### ◯CommonJS (require) の有効化
+
+以下の場合、CommonJSモジュールを利用するものとして扱われる。
+
+- 拡張子が.cjsのファイル
+- package.json のフィールド "type" に "commonjs" という値を含んでおり、拡張子 .js を持つファイル
+- package.json にフィールド "type" が存在しない場合、拡張子が .js のファイル
+
+何も宣言をしないで node.js のコードを書くと、暗黙的にCommonJSを利用する。
+
+### ◯ESModule (import) の有効化
+
+以下の場合、ESModuleを利用するものとして扱われる。
+
+- 拡張子が.mjsのファイル
+- package.json ファイルの "type" フィールドに "module" という値を含んでおり、拡張子が .js のファイル
+- evalの引数として渡された文字列、またはSTDIN経由でnodeにパイプされた文字列で、 --input-type=moduleのフラグがあるもの
+
+ESModuleの利用を前提とする場合、package.json もしくは拡張子に設定を加える必要がある。
+
+## ■ESNextとは
+
+TypeScriptやBabelの設定で、JavaScriptの最新仕様（ECMAScriptの将来の提案を含む）を追随する最先端のモジュール形式（ES Modules）や構文を利用する設定。
+
+### ◯ESNextのポイント
+
+- 特徴: tsconfig.jsonで "module": "ESNext" を指定すると、最新のESモジュール（ESM）形式が利用可能になる。
+- 用途: TypeScriptプロジェクトで、最新のJavaScript機能を使いたい場合に指定される。
+- メリット: WebpackやRollupなどのバンドラーと組み合わせた際、Tree Shaking（不要なコードの削除）が機能しやすく、コードの最適化がしやすい。
+- 注意点: CommonJS形式（require）とは異なり、ESMのルールに従う必要がある（ファイル拡張子の明示が必要など）。
+
+### ◯ESNext と他の設定の違い
+
+- commonjs: 従来のNode.js（module.exports/require）。
+- nodenext: Node.js 12以降のESMサポートに完全対応した、より堅実な設定。
+- es2020など: 特定のバージョンのECMAScript仕様で固定する場合に使う。
+
 ---
 
 <br>
@@ -693,3 +755,10 @@ keyframesで定義したアニメーションを再生する指定です。
 - infinite: 終わらずに繰り返し続ける
 
 animationは設定に寄って、永遠にアニメーションすることができる。
+
+## ■ユーザ認証
+
+### ◯fetchのcredentials: "include"
+
+クロスオリジン（別ドメイン・ポート）の通信であっても、クッキーや認証ヘッダーを強制的に送信する設定。<br>
+セッション認証やログイン状態を保持したAPI通信に必須で、サーバー側でCORSの許可が必要。

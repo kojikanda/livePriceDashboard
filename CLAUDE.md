@@ -214,38 +214,145 @@ Binance APIからは、価格だけでなく「取引量（Volume）」も取れ
 
 ### 開発方針
 
-- **フェーズ1**（現在）：ユーザ設定値はフロントエンドの state で管理。仮想ポートフォリオ等の機能を全て実装する。
-- **フェーズ2**（フェーズ1完了後）：ユーザ設定値をバックエンド（DB）で保持するよう移行する。
+- **フェーズ1**（完了）：ユーザ設定値はフロントエンドの state で管理。仮想ポートフォリオ等の機能を全て実装する。
+- **フェーズ2**（進行中）：以下の方針でバックエンド移行を進める。
+
+#### フェーズ2の方針
+
+**各コンポーネント処理**
+- マーケットセンチメント：センチメント・騰落率をバックエンドで算出し、フロントエンドは受信して表示のみ
+- ボラティリティスコア：バックエンドで算出し、フロントエンドは受信して表示のみ
+- ターゲット価格アラート：onBlur 時に設定値をバックエンドへ送信→DBに保存。バックエンドがアラート判定し結果を送信
+  - 自動再設定はバックエンドで行い、新設定値もフロントエンドに送信
+  - 入力中（onFocus〜onBlur）はアラート判定を停止する機能は維持
+- ボラティリティアラート：onBlur 時に設定値をバックエンドへ送信→DBに保存。バックエンドがアラート判定し結果を送信
+- 仮想ポートフォリオ：仮想購入時にバックエンドへ送信→DBに保存。バックエンドが損益計算し結果を送信
+
+**価格履歴**：バックエンドで3銘柄の価格履歴をメモリ上に保持
+
+**バックエンド→フロントエンドの送信**：ブロードキャストからユーザごとの個別送信に変更（周期は5秒維持）
+
+**通信方式**：設定値の保存・データ受信とも WebSocket（Socket.io）に統一。ログイン・登録・認証確認のみ HTTP
+
+**Socket.io イベント管理**：`usePriceStream` などの共通フック内で `socket.on` を行い、`SymbolPanel` 経由で各コンポーネントに反映（コンポーネント個別の Socket 接続管理は不要）
+
+**DB**：開発環境は PostgreSQL、本番環境は Neon
+
+**複数タブ同期**：対応なし（各タブ独立）
+
+#### フェーズ2の実装ステップ
+
+- **Step 1**（完了）：DB・認証の基盤整備
+- **Step 2**（未着手）：バックエンドの計算処理移行・ユーザごとの個別送信
+- **Step 3**（未着手）：設定値のDB保存・アラート判定移行
+- **Step 4**（未着手）：ポートフォリオのDB保存と計算移行
+
+---
+
+#### フェーズ2 Step 1：DB・認証の基盤整備（完了）
+
+**Backend 追加パッケージ**
+- `pg`・`bcryptjs`・`jsonwebtoken`・`cookie-parser`・`cors`・`dotenv`・`cookie`
+- 型定義：`@types/pg`・`@types/bcryptjs`・`@types/jsonwebtoken`・`@types/cookie-parser`・`@types/cors`・`@types/cookie`
+
+**Backend 新規ファイル**
+- `src/env.ts`：`NODE_ENV` に応じて `.env.local`（開発）または `.env.prod`（本番）を読み込む。`index.ts` の最初の import として配置することで、他モジュールより先に環境変数を設定する
+- `src/db/client.ts`：`pg.Pool` による PostgreSQL 接続プール。`DATABASE_URL` を環境変数から取得
+- `src/db/schema.sql`：4テーブル定義
+  - `users`：`id`・`email`（UNIQUE）・`password_hash`・`created_at`
+  - `target_price_alerts`：`user_id`・`symbol`・`target_high`・`target_low`・`auto_reset`（UNIQUE: user_id + symbol）
+  - `volatility_alert_settings`：`user_id`・`symbol`・`window_sec`・`threshold`（UNIQUE: user_id + symbol）
+  - `portfolio_positions`：`id`（UUID）・`user_id`・`symbol`・`direction`・`invested_jpy`・`entry_price_usd`・`usd_jpy_rate`・`coin_amount`
+  - 全テーブルで `ON DELETE CASCADE`（ユーザ削除時に関連データも削除）
+- `src/auth/jwt.ts`：`signToken`（7日間有効の JWT 生成）・`verifyToken`（JWT 検証、失敗時 `null` 返却）
+- `src/auth/middleware.ts`：Socket.io 接続時の認証ミドルウェア。`cookie` パッケージで Cookie を解析し JWT を検証。`socket.data.userId` にユーザID を設定
+- `src/routes/auth.ts`：認証関連の HTTP エンドポイント
+  - `POST /auth/register`：bcrypt でパスワードをハッシュ化し登録。JWT を httpOnly Cookie にセット
+  - `POST /auth/login`：パスワード検証後、JWT を httpOnly Cookie にセット
+  - `POST /auth/logout`：Cookie を削除
+  - `GET /auth/me`：Cookie の JWT を検証し、ユーザ情報を返す（ページリロード時の認証確認用）
+
+**Backend 変更ファイル**
+- `src/index.ts`：`import './env.js'` を最初の import に追加。CORS を `credentials: true` + `FRONTEND_URL`（環境変数）で設定。`express.json()`・`cookie-parser` ミドルウェアを追加。`/auth` ルートを追加。Socket.io に認証ミドルウェアを適用（未認証の接続を拒否）
+- `.gitignore`：`.env.prod` を追加
+- `.env.local`（新規・git管理外）：`DATABASE_URL`・`JWT_SECRET`・`PORT`・`NODE_ENV`・`FRONTEND_URL` を定義
+- `.env.prod`（新規・git管理外）：本番用の各環境変数を定義
+
+**認証設計**
+- JWT を httpOnly Cookie で管理（JavaScript から読めないため XSS に強い）
+- `secure: true` は本番環境（HTTPS）のみ有効
+- `sameSite: "lax"` で CSRF 基本対策
+
+**Frontend 追加パッケージ**
+- `react-router-dom`
+
+**Frontend 新規ファイル**
+- `src/types/auth.ts`：`User` 型（`userId`・`email`）
+- `src/context/AuthContext.ts`：`AuthContextType` 型定義と `AuthContext` の `createContext`（JSX なし・`.ts` 拡張子）
+- `src/context/AuthProvider.tsx`：認証状態管理コンポーネント。マウント時に `GET /auth/me` で認証確認。ログイン後に `socket.connect()`、ログアウト後に `socket.disconnect()`
+- `src/hooks/useAuth.ts`：`AuthContext` を参照するカスタムフック（Fast Refresh 対応のため `AuthProvider.tsx` から分離）
+- `src/components/ProtectedRoute.tsx`：未認証時に `/login` へリダイレクト。認証確認中はローディング表示
+- `src/pages/Dashboard.tsx`：旧 `App.tsx` の内容を移動（ダッシュボード本体）
+- `src/pages/LoginPage.tsx`：メールアドレス・パスワード入力フォーム。成功時にダッシュボードへ遷移
+- `src/pages/RegisterPage.tsx`：メールアドレス・パスワード・確認用パスワードの入力フォーム。成功時にダッシュボードへ遷移
+
+**Frontend 変更ファイル**
+- `src/lib/socket.ts`：`withCredentials: true`（Cookie 送信に必須）・`autoConnect: false`（認証後に手動接続）を追加
+- `src/App.tsx`：`Routes` + `Route` によるルーティングに変更。`/` は `ProtectedRoute` で保護
+- `src/main.tsx`：`BrowserRouter`・`AuthProvider` を追加（`BrowserRouter` が最外側）
 
 ### 現在のファイル構成
 
 ```
 livePriceDashboard/
 ├── backend/
-│   ├── src/index.ts
+│   ├── src/
+│   │   ├── index.ts
+│   │   ├── env.ts                  （環境変数ロード）
+│   │   ├── db/
+│   │   │   ├── client.ts           （PostgreSQL 接続プール）
+│   │   │   └── schema.sql          （テーブル定義）
+│   │   ├── auth/
+│   │   │   ├── jwt.ts              （JWT 生成・検証）
+│   │   │   └── middleware.ts       （Socket.io 認証ミドルウェア）
+│   │   └── routes/
+│   │       └── auth.ts             （認証 HTTP エンドポイント）
+│   ├── .env.local                  （開発用環境変数・git管理外）
+│   ├── .env.prod                   （本番用環境変数・git管理外）
 │   ├── package.json（type: "module"）
 │   └── tsconfig.json（module: ESNext）
 ├── frontend/
 │   ├── src/
-│   │   ├── types/price.ts
+│   │   ├── types/
+│   │   │   ├── price.ts
+│   │   │   └── auth.ts             （User 型）
+│   │   ├── context/
+│   │   │   ├── AuthContext.ts      （コンテキスト定義・型）
+│   │   │   └── AuthProvider.tsx    （認証状態管理コンポーネント）
 │   │   ├── lib/
 │   │   │   └── socket.ts           （socket シングルトン）
 │   │   ├── hooks/
 │   │   │   ├── usePriceStream.ts
-│   │   │   ├── useCurrentPrices.ts （PortfolioSimulator 用軽量フック）
-│   │   │   └── useUsdJpyRate.ts
+│   │   │   ├── useCurrentPrices.ts
+│   │   │   ├── useUsdJpyRate.ts
+│   │   │   └── useAuth.ts          （認証フック）
 │   │   ├── utils/
 │   │   │   ├── sentimentCalc.ts
 │   │   │   └── volatilityCalc.ts
 │   │   ├── components/
-│   │   │   ├── SymbolPanel.tsx      （銘柄ごとの表示をまとめたコンポーネント）
+│   │   │   ├── ProtectedRoute.tsx  （認証保護ルート）
+│   │   │   ├── SymbolPanel.tsx
 │   │   │   ├── PriceChart.tsx
 │   │   │   ├── AlertSettings.tsx
 │   │   │   ├── VolatilitySettings.tsx
 │   │   │   ├── PortfolioSimulator.tsx
 │   │   │   ├── MarketSentiment.tsx
 │   │   │   └── VolatilityScore.tsx
-│   │   ├── App.tsx
+│   │   ├── pages/
+│   │   │   ├── Dashboard.tsx       （旧 App.tsx の内容）
+│   │   │   ├── LoginPage.tsx
+│   │   │   └── RegisterPage.tsx
+│   │   ├── App.tsx                 （ルーティング定義）
 │   │   ├── index.css
 │   │   └── main.tsx
 │   ├── vite.config.ts
@@ -257,4 +364,5 @@ livePriceDashboard/
 
 ### 次回以降の候補タスク
 
-- Renderへのデプロイ
+- フェーズ2 Step 2：バックエンドの計算処理移行・ユーザごとの個別送信
+- Renderへのデプロイ（フェーズ2完了後）

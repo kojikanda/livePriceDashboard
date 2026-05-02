@@ -1,4 +1,4 @@
-import "dotenv/config";
+import "./env.js";
 import express from "express";
 import { createServer } from "http";
 import { Server } from "socket.io";
@@ -15,13 +15,13 @@ const httpServer = createServer(app);
 const io = new Server(httpServer, {
   // CORS設定
   cors: {
-    origin: "http://localhost:5173",
+    origin: process.env.FRONTEND_URL,
     credentials: true,
   },
 });
 
 // Socket.IOの認証ミドルウェアを適用
-app.use(cors({ origin: "http://localhost:5173", credentials: true }));
+app.use(cors({ origin: process.env.FRONTEND_URL, credentials: true }));
 // JSONリクエストのパース
 app.use(express.json());
 // クッキーのパース

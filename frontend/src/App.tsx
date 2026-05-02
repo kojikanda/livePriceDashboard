@@ -1,17 +1,8 @@
-import {
-  Box,
-  Container,
-  Typography,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-} from "@mui/material";
-import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
-import { SymbolPanel } from "./components/SymbolPanel";
-import { PortfolioSimulator } from "./components/PortfolioSimulator";
-import type { CryptoSymbol } from "./types/price";
-
-const SYMBOLS: CryptoSymbol[] = ["BTC", "ETH", "SOL"];
+import { Routes, Route } from "react-router-dom";
+import { LoginPage } from "./pages/LoginPage";
+import { RegisterPage } from "./pages/RegisterPage";
+import { Dashboard } from "./pages/Dashboard";
+import { ProtectedRoute } from "./components/ProtectedRoute";
 
 /**
  * アプリケーションのルートコンポーネント
@@ -19,41 +10,18 @@ const SYMBOLS: CryptoSymbol[] = ["BTC", "ETH", "SOL"];
  */
 function App() {
   return (
-    <Container maxWidth="xl">
-      <Box sx={{ py: 4 }}>
-        <Typography variant="h4" gutterBottom>
-          Live Price Dashboard
-        </Typography>
-
-        {/* 3銘柄グリッド */}
-        <Box
-          sx={{
-            display: "grid",
-            gridTemplateColumns: "repeat(3, 1fr)",
-            gap: 2,
-            alignItems: "start",
-            "& > *": { minWidth: 0 },
-          }}
-        >
-          {SYMBOLS.map((symbol) => (
-            <SymbolPanel key={symbol} symbol={symbol} />
-          ))}
-        </Box>
-
-        {/* 仮想ポートフォリオ */}
-        <Accordion sx={{ mt: 2 }} disableGutters>
-          <AccordionSummary
-            expandIcon={<ExpandMoreIcon />}
-            sx={{ bgcolor: "action.hover" }}
-          >
-            <Typography variant="h6">仮想ポートフォリオ</Typography>
-          </AccordionSummary>
-          <AccordionDetails sx={{ p: 0 }}>
-            <PortfolioSimulator />
-          </AccordionDetails>
-        </Accordion>
-      </Box>
-    </Container>
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/register" element={<RegisterPage />} />
+      <Route
+        path="/"
+        element={
+          <ProtectedRoute>
+            <Dashboard />
+          </ProtectedRoute>
+        }
+      />
+    </Routes>
   );
 }
 
