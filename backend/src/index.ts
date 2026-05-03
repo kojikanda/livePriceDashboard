@@ -7,6 +7,15 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import authRouter from "./routes/auth.js";
 import { applySocketAuthMiddleware } from "./auth/middleware.js";
+import { calcSentiment, calcPriceChanges } from "./calc/sentiment.js";
+import { calcVolatilityScore, calcChangePercent } from "./calc/volatility.js";
+import type {
+  PriceData,
+  SentimentWindow,
+  DashboardPayload,
+  DashboardSymbolData,
+  SentimentResult,
+} from "./types.js";
 
 const app = express();
 // Socket.ioはExpressを直接使えないため、HTTPサーバーをラップする
@@ -52,8 +61,25 @@ const SYMBOL_MAP: Record<string, string> = {
   solusdt: "SOL",
 };
 
+// 銘柄名のリスト
+const SYMBOLS = ["BTC", "ETH", "SOL"] as const;
+// センチメント集計のウィンドウサイズのリスト
+const SENTIMENT_WINDOWS: SentimentWindow[] = [10, 50, 100, 300];
+// 1時間分の履歴を保持するための最大データ数
+const HISTORY_MAX = Math.ceil((60 * 60 * 1000) / BLOADCAST_CYCLE) + 1;
+// チャート表示用（30分分）
+const CHART_HISTORY_MAX = Math.ceil((30 * 60 * 1000) / BLOADCAST_CYCLE) + 1;
+// デフォルト監視ウィンドウ（秒）
+const DEFAULT_VOLATILITY_WINDOW_SEC = 60;
+
 // 銘柄ごとの最新価格
 const latestPrices: Record<string, number> = {};
+// 銘柄ごとの価格履歴
+const priceHistories: Record<string, PriceData[]> = {
+  BTC: [],
+  ETH: [],
+  SOL: [],
+};
 
 // Binance WebSocket API用のWebSocket
 // 単にデータを受け取るだけなので、wsを使う
@@ -73,17 +99,64 @@ binanceWs.on("message", (data) => {
   }
 });
 
+/**
+ * 1銘柄分のダッシュボードデータを組み立てる
+ * @param symbol 銘柄名
+ * @returns ダッシュボードに表示するデータ, データ不足などで生成できない場合はnull
+ */
+function buildSymbolData(symbol: string): DashboardSymbolData | null {
+  const currentPrice = latestPrices[symbol];
+  if (currentPrice === undefined) return null;
+
+  const history = priceHistories[symbol] ?? [];
+
+  const sentimentResults = Object.fromEntries(
+    SENTIMENT_WINDOWS.map((w) => [w, calcSentiment(history, w)]),
+  ) as Record<SentimentWindow, SentimentResult>;
+
+  return {
+    currentPrice,
+    priceHistory: history.slice(-CHART_HISTORY_MAX),
+    sentimentResults,
+    priceChanges: calcPriceChanges(history, currentPrice),
+    volatilityScore: calcVolatilityScore(history),
+    changePercent: calcChangePercent(history, DEFAULT_VOLATILITY_WINDOW_SEC),
+  };
+}
+
 // ブロードキャスト周期毎にブロードキャストで最新価格等を送信する
 setInterval(() => {
-  // 全銘柄の価格が揃っていなければ送信しない
-  if (
-    !("BTC" in latestPrices && "ETH" in latestPrices && "SOL" in latestPrices)
-  ) {
-    return;
+  // 最新価格が全銘柄分揃っていない場合はスキップする
+  if (!SYMBOLS.every((s) => s in latestPrices)) return;
+
+  const now = Date.now();
+
+  // ブロードキャスト周期ごとに価格を履歴に追記する
+  for (const symbol of SYMBOLS) {
+    const price = latestPrices[symbol];
+    if (price === undefined) continue;
+    const history = priceHistories[symbol];
+    if (!history) continue;
+    history.push({
+      price,
+      timestamp: now,
+      time: new Date(now).toLocaleTimeString(),
+    });
+    if (history.length > HISTORY_MAX) history.shift();
   }
 
-  // ブロードキャスト送信
-  io.emit("priceUpdate", latestPrices);
+  const btc = buildSymbolData("BTC");
+  const eth = buildSymbolData("ETH");
+  const sol = buildSymbolData("SOL");
+  if (!btc || !eth || !sol) return;
+
+  const payload: DashboardPayload = { BTC: btc, ETH: eth, SOL: sol };
+
+  // 個別送信で全クライアントに送信する
+  // io.sockets.sockets は現在接続中の全ソケットのMap
+  for (const [, socket] of io.sockets.sockets) {
+    socket.emit("dashboardUpdate", payload);
+  }
 }, BLOADCAST_CYCLE);
 
 // ユーザから接続されたときの動作

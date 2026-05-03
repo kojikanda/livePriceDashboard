@@ -58,24 +58,19 @@ export function SymbolPanel({ symbol }: Props) {
 
   // グラフ表示に必要な件数
   const chartHistorySize = (chartDurationMin * 60) / BROADCAST_CYCLE_SEC + 1;
-  // センチメント表示に必要な最低の時間(分)
-  const SENTIMENT_MIN_MIN = 30;
-  // センチメントの30分比較に必要な件数（最低限）
-  const SENTIMENT_MIN_HISTORY =
-    (SENTIMENT_MIN_MIN * 60) / BROADCAST_CYCLE_SEC + 1;
-  // 保持する価格の履歴数 (グラフ表示とセンチメント表示で必要最小限の数のうち、大きい方を保持する履歴数とする)
-  const maxHistory = Math.max(chartHistorySize, SENTIMENT_MIN_HISTORY);
 
+  // 価格データ等をバックエンドから取得するカスタムフック
   const {
     currentPrice,
-    history,
+    priceHistory,
+    sentimentResults,
+    priceChanges,
+    volatilityScore,
     changePercent,
     showVolatilityAlert,
     setShowVolatilityAlert,
   } = usePriceStream({
     symbol,
-    maxHistory,
-    volatilityWindowSec,
     volatilityThreshold,
   });
 
@@ -195,7 +190,7 @@ export function SymbolPanel({ symbol }: Props) {
         </AccordionSummary>
         <AccordionDetails sx={{ p: 0 }}>
           <PriceChart
-            data={history.slice(-chartHistorySize)}
+            data={priceHistory.slice(-chartHistorySize)}
             durationMin={chartDurationMin}
             onDurationChange={setChartDurationMin}
           />
@@ -211,7 +206,10 @@ export function SymbolPanel({ symbol }: Props) {
           <Typography>マーケットセンチメント</Typography>
         </AccordionSummary>
         <AccordionDetails sx={{ p: 0 }}>
-          <MarketSentiment history={history} currentPrice={currentPrice} />
+          <MarketSentiment
+            sentimentResults={sentimentResults}
+            priceChanges={priceChanges}
+          />
         </AccordionDetails>
       </Accordion>
 
@@ -224,7 +222,7 @@ export function SymbolPanel({ symbol }: Props) {
           <Typography>ボラティリティスコア</Typography>
         </AccordionSummary>
         <AccordionDetails sx={{ p: 0 }}>
-          <VolatilityScore history={history} />
+          <VolatilityScore volatilityScore={volatilityScore} />
         </AccordionDetails>
       </Accordion>
 

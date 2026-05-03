@@ -1,12 +1,9 @@
-import { useMemo } from "react";
 import { Box, Card, CardContent, Chip, Typography } from "@mui/material";
 import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import { Gauge, gaugeClasses } from "@mui/x-charts/Gauge";
-import type { PriceData } from "../types/price";
-import {
-  calcVolatilityScore,
-  VOLATILITY_WINDOW_SIZE,
-} from "../utils/volatilityCalc";
+
+/** ボラティリティスコア算出対象のデータ数 */
+export const VOLATILITY_WINDOW_SIZE = 30;
 
 /** アラートを出す閾値 */
 const ALERT_THRESHOLD = 80;
@@ -36,20 +33,16 @@ function getScoreLabel(score: number): string {
 }
 
 type Props = {
-  history: PriceData[];
+  volatilityScore: number | null;
 };
 
 /**
  * ボラティリティ・スコアコンポーネント
- * @param props.history 価格履歴
+ * @param props.volatilityScore ボラティリティスコア
  * @returns ボラティリティ・スコアコンポーネント
  */
-export function VolatilityScore({ history }: Props) {
-  // history が更新されたとき（＝価格更新時）のみ再計算
-  const score = useMemo(
-    () => calcVolatilityScore(history, VOLATILITY_WINDOW_SIZE),
-    [history],
-  );
+export function VolatilityScore({ volatilityScore }: Props) {
+  const score = volatilityScore;
 
   // アラート発生有無
   const isAlert = score !== null && score > ALERT_THRESHOLD;

@@ -2,8 +2,11 @@
  * 価格情報
  */
 export type PriceData = {
+  // 価格データの時間文字列
   time: string;
+  // 価格
   price: number;
+  // 価格データのタイムスタンプ(ミリ秒)
   timestamp: number;
 };
 
@@ -32,7 +35,7 @@ export type PriceStreamOptions = {
 export type PricePayload = Record<CryptoSymbol, number>;
 
 /**
- * センチメント（強気/弱気）の集計結果
+ * センチメント(価格上昇/下落の割合)の集計結果
  */
 export type SentimentResult = {
   // 価格が上がった回数
@@ -60,3 +63,30 @@ export type PriceChangeSummary = {
   // 騰落率(%)
   pct: number | null;
 };
+
+/**
+ * センチメント集計ウィンドウの選択肢
+ */
+export const SENTIMENT_WINDOWS = [10, 50, 100, 300] as const;
+
+/**
+ * センチメント集計ウィンドウの選択肢の型
+ */
+export type SentimentWindow = (typeof SENTIMENT_WINDOWS)[number];
+
+/**
+ * バックエンドから受信する1銘柄分のデータ
+ */
+export type DashboardSymbolData = {
+  currentPrice: number;
+  priceHistory: PriceData[];
+  sentimentResults: Record<SentimentWindow, SentimentResult>;
+  priceChanges: PriceChangeSummary[];
+  volatilityScore: number | null;
+  changePercent: number | null;
+};
+
+/**
+ * バックエンドから受信する全銘柄分のデータ
+ */
+export type DashboardPayload = Record<CryptoSymbol, DashboardSymbolData>;

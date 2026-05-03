@@ -234,7 +234,7 @@ Binance APIからは、価格だけでなく「取引量（Volume）」も取れ
 
 **通信方式**：設定値の保存・データ受信とも WebSocket（Socket.io）に統一。ログイン・登録・認証確認のみ HTTP
 
-**Socket.io イベント管理**：`usePriceStream` などの共通フック内で `socket.on` を行い、`SymbolPanel` 経由で各コンポーネントに反映（コンポーネント個別の Socket 接続管理は不要）
+**Socket.io イベント管理**：`DashboardProvider` 1箇所で `socket.on("dashboardUpdate")` を行い、Context API 経由で全コンポーネントにデータを配布。各フックはコンテキストを読むだけでソケット接続管理が不要
 
 **DB**：開発環境は PostgreSQL、本番環境は Neon
 
@@ -243,7 +243,7 @@ Binance APIからは、価格だけでなく「取引量（Volume）」も取れ
 #### フェーズ2の実装ステップ
 
 - **Step 1**（完了）：DB・認証の基盤整備
-- **Step 2**（未着手）：バックエンドの計算処理移行・ユーザごとの個別送信
+- **Step 2**（完了）：バックエンドの計算処理移行・ユーザごとの個別送信
 - **Step 3**（未着手）：設定値のDB保存・アラート判定移行
 - **Step 4**（未着手）：ポートフォリオのDB保存と計算移行
 
@@ -301,6 +301,43 @@ Binance APIからは、価格だけでなく「取引量（Volume）」も取れ
 - `src/App.tsx`：`Routes` + `Route` によるルーティングに変更。`/` は `ProtectedRoute` で保護
 - `src/main.tsx`：`BrowserRouter`・`AuthProvider` を追加（`BrowserRouter` が最外側）
 
+#### フェーズ2 Step 2：バックエンドの計算処理移行・ユーザごとの個別送信（完了）
+
+**Backend 新規ファイル**
+- `src/types.ts`：バックエンドが送信するデータの共有型定義
+  - `SentimentWindow`：`10 | 50 | 100 | 300`（パフォーマンスを考慮して絞り込んだウィンドウサイズ）
+  - `DashboardSymbolData`：`currentPrice`・`priceHistory`・`sentimentResults`・`priceChanges`・`volatilityScore`・`changePercent` を持つ銘柄ごとのデータ構造
+  - `DashboardPayload`：`Record<"BTC" | "ETH" | "SOL", DashboardSymbolData>`
+- `src/calc/sentiment.ts`：センチメント・騰落率計算ロジック（フロントエンドの `sentimentCalc.ts` をバックエンドに移植）
+  - `calcSentiment(history, windowSize)`：`history.slice(-(windowSize + 1))` で正しく `windowSize` 個の比較を実施
+  - `calcPriceChanges(history, currentPrice, now?)`：逆順ループで効率的に比較対象エントリを検索
+- `src/calc/volatility.ts`：ボラティリティスコア・変化率計算ロジック
+  - `calcVolatilityScore(history, windowSize)`：変動係数ベースで `Math.round` により整数スコアを返す（0〜100）
+  - `calcChangePercent(history, windowSec)`：逆順ループで早期終了する実装（`filter` ではなく `for` ループ）
+
+**Backend 変更ファイル**
+- `src/index.ts`
+  - `priceHistories`（`Record<CryptoSymbol, PriceData[]>`）をモジュールスコープで保持
+  - `setInterval` 内で価格履歴へのアペンドと全計算を実施し `DashboardPayload` を組み立て
+  - `io.sockets.sockets` Map をイテレートしてユーザごとに個別送信（ブロードキャストから変更）
+  - `DEFAULT_VOLATILITY_WINDOW_SEC = 60`、`SENTIMENT_WINDOWS = [10, 50, 100, 300]`
+  - `FRONTEND_URL` を環境変数から取得（ハードコードを廃止）
+
+**Frontend 新規ファイル**
+- `src/context/DashboardContext.ts`：`DashboardContextType` 型定義と `DashboardContext` の `createContext`（JSX なし・`.ts` 拡張子）
+- `src/context/DashboardProvider.tsx`：`socket.on("dashboardUpdate")` を1箇所に集約。受信した `DashboardPayload` を `useState` で保持し Context 経由で配布
+- `src/hooks/useDashboard.ts`：`DashboardContext` を参照するカスタムフック（Fast Refresh 対応のため分離）
+
+**Frontend 変更ファイル**
+- `src/types/price.ts`：`SentimentWindow`・`DashboardSymbolData`・`DashboardPayload` を追加
+- `src/lib/socket.ts`：`withCredentials: true`・`autoConnect: false` に変更済み（Step 1 対応）
+- `src/hooks/usePriceStream.ts`：複雑な ref ベースの計算を全て削除。`useDashboard()` からデータを読み取る形に簡素化。Props は `{ symbol, volatilityThreshold }` のみ
+- `src/hooks/useCurrentPrices.ts`：`useState`/`useEffect` を削除。`useDashboard()` から現在価格だけを取り出す軽量実装に変更
+- `src/components/MarketSentiment.tsx`：Props を `{ sentimentResults, priceChanges }` に変更。`useMemo` による再計算を削除。`sentimentWindow` は `SentimentWindow` 型でキャスト
+- `src/components/VolatilityScore.tsx`：Props を `{ volatilityScore: number | null }` に変更。`useMemo` による再計算を削除
+- `src/components/SymbolPanel.tsx`：`maxHistory`・`SENTIMENT_MIN_HISTORY` 定数を削除。上記フックとコンポーネントの変更後の Props に対応
+- `src/pages/Dashboard.tsx`：`<DashboardProvider>` で全体をラップ（`DashboardProvider` は `AuthProvider` の内側に配置）
+
 ### 現在のファイル構成
 
 ```
@@ -309,6 +346,10 @@ livePriceDashboard/
 │   ├── src/
 │   │   ├── index.ts
 │   │   ├── env.ts                  （環境変数ロード）
+│   │   ├── types.ts                （DashboardPayload など共有型）
+│   │   ├── calc/
+│   │   │   ├── sentiment.ts        （センチメント・騰落率計算）
+│   │   │   └── volatility.ts       （ボラティリティスコア・変化率計算）
 │   │   ├── db/
 │   │   │   ├── client.ts           （PostgreSQL 接続プール）
 │   │   │   └── schema.sql          （テーブル定義）
@@ -328,17 +369,20 @@ livePriceDashboard/
 │   │   │   └── auth.ts             （User 型）
 │   │   ├── context/
 │   │   │   ├── AuthContext.ts      （コンテキスト定義・型）
-│   │   │   └── AuthProvider.tsx    （認証状態管理コンポーネント）
+│   │   │   ├── AuthProvider.tsx    （認証状態管理コンポーネント）
+│   │   │   ├── DashboardContext.ts （コンテキスト定義・型）
+│   │   │   └── DashboardProvider.tsx（dashboardUpdate 受信・配布）
 │   │   ├── lib/
 │   │   │   └── socket.ts           （socket シングルトン）
 │   │   ├── hooks/
 │   │   │   ├── usePriceStream.ts
 │   │   │   ├── useCurrentPrices.ts
 │   │   │   ├── useUsdJpyRate.ts
-│   │   │   └── useAuth.ts          （認証フック）
+│   │   │   ├── useAuth.ts          （認証フック）
+│   │   │   └── useDashboard.ts     （ダッシュボードデータフック）
 │   │   ├── utils/
-│   │   │   ├── sentimentCalc.ts
-│   │   │   └── volatilityCalc.ts
+│   │   │   ├── sentimentCalc.ts    （フロントエンド側ロジック・現在未使用）
+│   │   │   └── volatilityCalc.ts   （フロントエンド側ロジック・現在未使用）
 │   │   ├── components/
 │   │   │   ├── ProtectedRoute.tsx  （認証保護ルート）
 │   │   │   ├── SymbolPanel.tsx
@@ -349,7 +393,7 @@ livePriceDashboard/
 │   │   │   ├── MarketSentiment.tsx
 │   │   │   └── VolatilityScore.tsx
 │   │   ├── pages/
-│   │   │   ├── Dashboard.tsx       （旧 App.tsx の内容）
+│   │   │   ├── Dashboard.tsx       （DashboardProvider でラップ済み）
 │   │   │   ├── LoginPage.tsx
 │   │   │   └── RegisterPage.tsx
 │   │   ├── App.tsx                 （ルーティング定義）
@@ -364,5 +408,6 @@ livePriceDashboard/
 
 ### 次回以降の候補タスク
 
-- フェーズ2 Step 2：バックエンドの計算処理移行・ユーザごとの個別送信
+- フェーズ2 Step 3：設定値のDB保存・アラート判定移行（ターゲット価格アラート・ボラティリティアラート）
+- フェーズ2 Step 4：ポートフォリオのDB保存と計算移行
 - Renderへのデプロイ（フェーズ2完了後）

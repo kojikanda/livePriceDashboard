@@ -1,163 +1,39 @@
-import { useEffect, useRef, useState } from "react";
-import type {
-  PriceData,
-  PriceStreamOptions,
-  PricePayload,
-} from "../types/price";
-import { socket } from "../lib/socket";
+import { useState, useEffect } from "react";
+import { useDashboard } from "./useDashboard";
+import type { CryptoSymbol } from "../types/price";
 
-// ボラティリティアラートの判定で使用する算出結果、及び、変化率算出で使用した設定値を保持する型
-type ChangePercentState = {
-  value: number;
-  windowSec: number;
-  threshold: number;
-} | null;
-
-// ボラティリティアラート発生判定履歴の型
-type VolatilityHistory = { timestamp: number; price: number };
-
-/**
- * ボラティリティアラート発生判定履歴からウィンドウ外の情報を削除する
- * @param history ボラティリティアラート発生判定履歴配列
- * @param now 現在時刻
- * @param windowMs ウィンドウ(ミリ秒)
- */
-function removeDataOutsideWindow(
-  history: VolatilityHistory[],
-  now: number,
-  windowMs: number,
-) {
-  // console.log(
-  //   `[removeDataOutsideWindow] now=${new Date(now).toLocaleString()}`,
-  // );
-  while (history.length > 1 && now - history[1]!.timestamp > windowMs) {
-    // console.log(
-    //   `[removeDataOutsideWindow] delete data time=${new Date(history[0]!.timestamp).toLocaleString()}`,
-    // );
-    history.shift();
-  }
-}
+type Props = {
+  symbol: CryptoSymbol;
+  volatilityThreshold: number;
+};
 
 /**
  * 価格データ取得用カスタムフック
  * @param symbol 銘柄のシンボル
- * @param maxHistory 価格データの最大保持件数
- * @param volatilityWindowSec ボラティリティアラート監視ウィンドウ(秒)
  * @param volatilityThreshold ボラティリティアラート閾値(%)
  * @returns 価格データ取得用カスタムフック
  */
-export function usePriceStream({
-  symbol,
-  maxHistory,
-  volatilityWindowSec,
-  volatilityThreshold,
-}: PriceStreamOptions) {
-  // 価格
-  const [currentPrice, setCurrentPrice] = useState<number | null>(null);
-  // 価格の履歴
-  const [history, setHistory] = useState<PriceData[]>([]);
-  // ボラティリティアラートの判定で使用する算出結果、及び、算出で使用した設定値
-  const [changePercentState, setChangePercentState] =
-    useState<ChangePercentState>(null);
-  // ボラティリティアラート発生有無
+export function usePriceStream({ symbol, volatilityThreshold }: Props) {
+  const { payload } = useDashboard();
+  const symbolData = payload?.[symbol] ?? null;
   const [showVolatilityAlert, setShowVolatilityAlert] = useState(false);
-  // ボラティリティアラート発生判定履歴
-  const volatilityHistoryRef = useRef<VolatilityHistory[]>([]);
-  // ボラティリティアラート監視ウィンドウ
-  const windowSecRef = useRef(volatilityWindowSec);
-  // ボラティリティアラート閾値
-  const thresholdRef = useRef(volatilityThreshold);
-  // 価格データの最大保持件数
-  // サーバからのデータ受信イベントのクロージャ内で値を使用するため、
-  // refを使用することで、値が変化したときにも対応できるようにする
-  const maxHistoryRef = useRef(maxHistory);
 
-  // 現在の設定値で計算されたものだけを表示（不一致ならnull）
-  const changePercent =
-    changePercentState !== null &&
-    changePercentState.windowSec === volatilityWindowSec
-      ? changePercentState.value
-      : null;
-
-  // 設定値が変わったときの処理
+  // ボラティリティアラートの検知判定
   useEffect(() => {
-    const now = Date.now();
-    const newWindowMs = volatilityWindowSec * 1000;
-
-    // ウィンドウが変わったときだけ、新しいウィンドウより古いエントリを削除
-    // 閾値だけが変わったときは何もしない
-    if (windowSecRef.current !== volatilityWindowSec) {
-      const vHistory = volatilityHistoryRef.current;
-      removeDataOutsideWindow(vHistory, now, newWindowMs);
+    const pct = symbolData?.changePercent;
+    if (pct == null) return;
+    if (Math.abs(pct) >= volatilityThreshold) {
+      setShowVolatilityAlert(true);
     }
-
-    windowSecRef.current = volatilityWindowSec;
-    thresholdRef.current = volatilityThreshold;
-  }, [volatilityWindowSec, volatilityThreshold]);
-
-  // maxHistoryRefの値を最新の値で更新
-  useEffect(() => {
-    maxHistoryRef.current = maxHistory;
-  }, [maxHistory]);
-
-  // socketイベントの登録・解除（設定値の変更には反応しない）
-  useEffect(() => {
-    const handler = (data: PricePayload) => {
-      // symbolに対応した銘柄の価格を取得
-      const price = data[symbol];
-      const now = Date.now();
-      const windowMs = windowSecRef.current * 1000;
-
-      // 現在の価格をstateに設定
-      const entry: PriceData = {
-        time: new Date().toLocaleTimeString(),
-        price,
-        timestamp: now,
-      };
-      setCurrentPrice(price);
-      setHistory((prev) => [...prev, entry].slice(-maxHistoryRef.current));
-
-      // ボラティリティアラートで使用する値を設定
-      const vHistory = volatilityHistoryRef.current;
-      vHistory.push({ timestamp: now, price });
-      // 監視ウィンドウから外れる値は削除
-      removeDataOutsideWindow(vHistory, now, windowMs);
-
-      // ボラティリティアラート判定処理
-      if (vHistory.length >= 2) {
-        const oldestEntry = vHistory[0]!;
-        const elapsedSec = (now - oldestEntry.timestamp) / 1000;
-        // 誤差を考慮し、監視ウィンドウの90%以上でアラート判定を行う
-        if (elapsedSec >= windowSecRef.current * 0.9) {
-          // 変化率算出
-          const pct = ((price - oldestEntry.price) / oldestEntry.price) * 100;
-          // 計算時の設定値もセットで保存
-          setChangePercentState({
-            value: pct,
-            windowSec: windowSecRef.current,
-            threshold: thresholdRef.current,
-          });
-          // アラート判定
-          if (Math.abs(pct) > thresholdRef.current) {
-            setShowVolatilityAlert(true);
-          }
-        }
-      }
-    };
-
-    // WebSocketでデータを受信したときのイベント処理を追加
-    socket.on("priceUpdate", handler);
-
-    // 切断が切れたときはイベントを解除
-    return () => {
-      socket.off("priceUpdate", handler);
-    };
-  }, [symbol]);
+  }, [symbolData?.changePercent, volatilityThreshold]);
 
   return {
-    currentPrice,
-    history: history.slice(-maxHistory),
-    changePercent,
+    currentPrice: symbolData?.currentPrice ?? null,
+    priceHistory: symbolData?.priceHistory ?? [],
+    sentimentResults: symbolData?.sentimentResults ?? null,
+    priceChanges: symbolData?.priceChanges ?? [],
+    volatilityScore: symbolData?.volatilityScore ?? null,
+    changePercent: symbolData?.changePercent ?? null,
     showVolatilityAlert,
     setShowVolatilityAlert,
   };

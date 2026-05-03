@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import {
   Box,
   Card,
@@ -9,40 +9,32 @@ import {
   Typography,
   type SelectChangeEvent,
 } from "@mui/material";
-import type { PriceData } from "../types/price";
-import { calcSentiment, calcPriceChanges } from "../utils/sentimentCalc";
+import {
+  type SentimentResult,
+  type PriceChangeSummary,
+  type SentimentWindow,
+  SENTIMENT_WINDOWS,
+} from "../types/price";
 
 type Props = {
-  history: PriceData[];
-  currentPrice: number | null;
+  sentimentResults: Record<SentimentWindow, SentimentResult> | null;
+  priceChanges: PriceChangeSummary[];
 };
 
 /**
  * マーケット・センチメントコンポーネント
- * @param props.history 価格履歴
- * @param props.currentPrice 現在の価格
+ * @param props.sentimentResults センチメントの集計結果
+ * @param props.priceChanges 騰落率サマリーの配列
  * @returns マーケット・センチメントコンポーネント
  */
-export function MarketSentiment({ history, currentPrice }: Props) {
+export function MarketSentiment({ sentimentResults, priceChanges }: Props) {
   // センチメント・バーの算出対象回数
-  const [sentimentWindow, setSentimentWindow] = useState(30);
-
-  // センチメントの集計結果
-  const sentiment = useMemo(
-    () => calcSentiment(history, sentimentWindow),
-    [history, sentimentWindow],
-  );
-
-  // 騰落率の計算結果
-  const priceChanges = useMemo(
-    () =>
-      currentPrice !== null ? calcPriceChanges(history, currentPrice) : [],
-    [history, currentPrice],
-  );
+  const [sentimentWindow, setSentimentWindow] = useState<SentimentWindow>(50);
 
   // センチメントの割合算出結果をパーセンテージに変換
-  const upPct = Math.round(sentiment.upRatio * 100);
-  const downPct = Math.round(sentiment.downRatio * 100);
+  const sentiment = sentimentResults?.[sentimentWindow] ?? null;
+  const upPct = Math.round((sentiment?.upRatio ?? 0.5) * 100);
+  const downPct = Math.round((sentiment?.downRatio ?? 0.5) * 100);
 
   return (
     <Card sx={{ mt: 2 }}>
@@ -61,13 +53,13 @@ export function MarketSentiment({ history, currentPrice }: Props) {
             <Select
               value={sentimentWindow}
               onChange={(e: SelectChangeEvent<number>) =>
-                setSentimentWindow(Number(e.target.value))
+                setSentimentWindow(Number(e.target.value) as SentimentWindow)
               }
               size="small"
               variant="standard"
               sx={{ mx: 0.5, fontSize: "0.875rem" }}
             >
-              {[10, 20, 30, 50, 100, 200, 300].map((n) => (
+              {SENTIMENT_WINDOWS.map((n) => (
                 <MenuItem key={n} value={n}>
                   {n}
                 </MenuItem>
@@ -79,10 +71,10 @@ export function MarketSentiment({ history, currentPrice }: Props) {
           {/* 上昇/下落のカウント */}
           <Box sx={{ display: "flex", gap: 2 }}>
             <Typography variant="caption" sx={{ color: "success.main" }}>
-              ▲ 上昇 {sentiment.upCount}回（{upPct}%）
+              ▲ 上昇 {sentiment?.upCount ?? "--"}回（{upPct}%）
             </Typography>
             <Typography variant="caption" sx={{ color: "error.main" }}>
-              ▼ 下落 {sentiment.downCount}回（{downPct}%）
+              ▼ 下落 {sentiment?.downCount ?? "--"}回（{downPct}%）
             </Typography>
           </Box>
         </Box>
@@ -95,7 +87,7 @@ export function MarketSentiment({ history, currentPrice }: Props) {
         <Box sx={{ position: "relative", mb: 1 }}>
           <LinearProgress
             variant="determinate"
-            value={sentiment.upRatio * 100}
+            value={upPct}
             sx={{
               height: 24,
               borderRadius: 1,
