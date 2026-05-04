@@ -163,7 +163,7 @@ setInterval(() => {
     if (history.length > HISTORY_MAX) history.shift();
   }
 
-  // 全ユーザ分のDB更新(Promiss)を収集する
+  // 全ユーザ分のDB更新(Promise)を収集する
   const upsertTasks: Promise<void>[] = [];
 
   // ユーザごとに個別送信する
@@ -207,7 +207,7 @@ setInterval(() => {
     }
   }
 
-  // 収集した全てのDB更新(Promiss)を並列実行する
+  // 収集した全てのDB更新(Promise)を並列実行する
   if (upsertTasks.length > 0) {
     void Promise.all(upsertTasks).catch(console.error);
   }
@@ -222,7 +222,7 @@ io.on("connection", async (socket) => {
   await Promise.all([
     initTargetAlertState(socket.id, userId),
     initVolatilityState(socket.id, userId),
-  ]);
+  ]).catch(console.error);
 
   // フロントエンドに初期設定値を送信する
   const settingsPayload: AlertSettingsPayload = {
@@ -240,13 +240,13 @@ io.on("connection", async (socket) => {
       targetLow: number | null;
       autoReset: boolean;
     }) => {
-      await saveTargetAlertState(
+      saveTargetAlertState(
         socket.id,
         data.symbol,
         data.targetHigh,
         data.targetLow,
         data.autoReset,
-      );
+      ).catch(console.error);
     },
   );
 
@@ -258,12 +258,12 @@ io.on("connection", async (socket) => {
       windowSec: number;
       threshold: number;
     }) => {
-      await saveVolatilitySetting(
+      saveVolatilitySetting(
         socket.id,
         data.symbol,
         data.windowSec,
         data.threshold,
-      );
+      ).catch(console.error);
     },
   );
 
