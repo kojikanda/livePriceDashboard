@@ -21,6 +21,14 @@ type SocketTargetState = {
   alerts: Partial<Record<CryptoSymbol, TargetAlertState>>;
 };
 
+/**
+ * checkTargetAlertの返り値の型
+ */
+type CheckTargetAlertResult = {
+  alertInfo: TargetAlertInfo | undefined;
+  upsertTask: Promise<void> | undefined;
+};
+
 // 自動再設定のオフセット率（現在価格の±1%）
 const OFFSET_RATE = 0.01;
 
@@ -111,17 +119,17 @@ export function checkTargetAlert(
   socketId: string,
   symbol: CryptoSymbol,
   currentPrice: number,
-): TargetAlertInfo | undefined {
+): CheckTargetAlertResult {
   const state = targetAlertStates.get(socketId);
   const ta = state?.alerts[symbol];
-  if (!ta || ta.paused) return undefined;
+  if (!ta || ta.paused) return { alertInfo: undefined, upsertTask: undefined };
 
   // 上限チェック
   if (ta.targetHigh !== null) {
     if (currentPrice >= ta.targetHigh && !ta.firedHigh) {
-      // 上限アラート発火時はアラート発生の情報を返す
+      // 上限アラート発火時はアラート発生の情報を返すとともに、必要に応じて自動再設定も行う
       ta.firedHigh = true;
-      return updateAndCreateTargetAlertInfo(
+      return updateAndCreateTargetAlertResult(
         state.userId,
         symbol,
         currentPrice,
@@ -136,9 +144,9 @@ export function checkTargetAlert(
   // 下限チェック
   if (ta.targetLow !== null) {
     if (currentPrice <= ta.targetLow && !ta.firedLow) {
-      // 下限アラート発火時はアラート発生の情報を返す
+      // 下限アラート発火時はアラート発生の情報を返すとともに、必要に応じて自動再設定も行う
       ta.firedLow = true;
-      return updateAndCreateTargetAlertInfo(
+      return updateAndCreateTargetAlertResult(
         state.userId,
         symbol,
         currentPrice,
@@ -150,7 +158,7 @@ export function checkTargetAlert(
     }
   }
 
-  return undefined;
+  return { alertInfo: undefined, upsertTask: undefined };
 }
 
 /**
@@ -162,13 +170,13 @@ export function checkTargetAlert(
  * @param isHeight 上限アラートか下限アラートかのフラグ
  * @returns ターゲット価格アラートの情報
  */
-function updateAndCreateTargetAlertInfo(
+function updateAndCreateTargetAlertResult(
   userId: number,
   symbol: CryptoSymbol,
   currentPrice: number,
   targetAlertState: TargetAlertState,
   isHeight: boolean,
-): TargetAlertInfo {
+): CheckTargetAlertResult {
   const side = isHeight ? "high" : "low";
 
   if (targetAlertState.autoReset) {
@@ -177,17 +185,22 @@ function updateAndCreateTargetAlertInfo(
     const newLow = currentPrice * (1 - OFFSET_RATE);
     targetAlertState.targetHigh = newHigh;
     targetAlertState.targetLow = newLow;
-    void upsertTargetAlert(
-      userId,
-      symbol,
-      newHigh,
-      newLow,
-      targetAlertState.autoReset,
-    );
-    return { side, price: currentPrice, newHigh, newLow };
+    return {
+      alertInfo: { side, price: currentPrice, newHigh, newLow },
+      upsertTask: upsertTargetAlert(
+        userId,
+        symbol,
+        newHigh,
+        newLow,
+        targetAlertState.autoReset,
+      ),
+    };
   } else {
     // 自動再設定なしのとき
-    return { side, price: currentPrice };
+    return {
+      alertInfo: { side, price: currentPrice },
+      upsertTask: undefined,
+    };
   }
 }
 

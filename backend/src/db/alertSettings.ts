@@ -3,6 +3,8 @@ import type { CryptoSymbol } from "../types.js";
 
 /**
  * ユーザの全銘柄のターゲット価格アラート設定をDBから読み込むメソッド
+ * @param userId ユーザID
+ * @returns ターゲット価格アラート設定の配列
  */
 export async function loadTargetAlerts(userId: number) {
   const result = await pool.query(
@@ -21,6 +23,12 @@ export async function loadTargetAlerts(userId: number) {
 
 /**
  * ターゲット価格アラート設定を保存するupsertメソッド
+ * @param userId ユーザID
+ * @param symbol 銘柄名
+ * @param targetHigh 上限価格
+ * @param targetLow 下限価格
+ * @param autoReset アラート自動リセットの有無
+ * @return Promise
  */
 export async function upsertTargetAlert(
   userId: number,
@@ -40,6 +48,8 @@ export async function upsertTargetAlert(
 
 /**
  * ユーザの全銘柄のボラティリティアラート設定をDBから読み込むメソッド
+ * @param userId ユーザID
+ * @returns ボラティリティアラート設定の配列
  */
 export async function loadVolatilitySettings(userId: number) {
   const result = await pool.query(
@@ -57,6 +67,11 @@ export async function loadVolatilitySettings(userId: number) {
 
 /**
  * ボラティリティアラート設定を保存するupsertメソッド
+ * @param userId ユーザID
+ * @param symbol 銘柄名
+ * @param windowSec ボラティリティアラートの監視ウィンドウ(秒)
+ * @param threshold 閾値
+ * @return Promise
  */
 export async function upsertVolatilitySetting(
   userId: number,

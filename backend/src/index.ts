@@ -163,6 +163,9 @@ setInterval(() => {
     if (history.length > HISTORY_MAX) history.shift();
   }
 
+  // 全ユーザ分のDB更新(Promiss)を収集する
+  const upsertTasks: Promise<void>[] = [];
+
   // ユーザごとに個別送信する
   for (const [socketId, socket] of io.sockets.sockets) {
     const symbolDataMap: Partial<Record<CryptoSymbol, DashboardSymbolData>> =
@@ -181,8 +184,14 @@ setInterval(() => {
       const currentPrice = latestPrices[symbol]!;
 
       // ターゲット価格アラートの判定結果を送信データに追加する
-      const targetAlertInfo = checkTargetAlert(socketId, symbol, currentPrice);
-      if (targetAlertInfo) data.targetAlertInfo = targetAlertInfo;
+      const { alertInfo, upsertTask } = checkTargetAlert(
+        socketId,
+        symbol,
+        currentPrice,
+      );
+      if (alertInfo) data.targetAlertInfo = alertInfo;
+      // DB更新が必要な場合はPromiseをupsertTasksに追加する
+      if (upsertTask) upsertTasks.push(upsertTask);
 
       // ボラティリティアラートの判定結果を送信データに追加する
       if (checkVolatilityAlert(socketId, symbol, data.changePercent)) {
@@ -196,6 +205,11 @@ setInterval(() => {
     if (SYMBOLS.every((s) => s in symbolDataMap)) {
       socket.emit("dashboardUpdate", symbolDataMap as DashboardPayload);
     }
+  }
+
+  // 収集した全てのDB更新(Promiss)を並列実行する
+  if (upsertTasks.length > 0) {
+    void Promise.all(upsertTasks).catch(console.error);
   }
 }, DATA_SEND_CYCLE);
 
