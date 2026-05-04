@@ -52,7 +52,7 @@ export function AlertSettings({ symbol }: Props) {
     initializedRef.current = true;
   }, [alertSettings, symbol]);
 
-  // バックエンドからのアラート発火通知を受け取る
+  // バックエンドからのアラート発火通知を受け取ったときの処理
   useEffect(() => {
     if (!targetAlertEvent || targetAlertEvent.symbol !== symbol) return;
 

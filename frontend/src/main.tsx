@@ -12,6 +12,16 @@ const darkTheme = createTheme({
   },
 });
 
+// 開発時のみ:first-childに関するエラーログが出ないようにする
+if (import.meta.env.DEV) {
+  const originalConsoleError = console.error.bind(console);
+  console.error = (...args: Parameters<typeof console.error>) => {
+    // Emotion の :first-child 警告は SSR 非使用のため無害なので抑制する
+    if (typeof args[0] === "string" && args[0].includes(":first-child")) return;
+    originalConsoleError(...args);
+  };
+}
+
 // アプリケーションのルートコンポーネントをレンダリング
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

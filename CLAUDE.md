@@ -406,8 +406,9 @@ Binance APIからは、価格だけでなく「取引量（Volume）」も取れ
 - `src/context/DashboardProvider.tsx`：`alertKeyRef`（カウンタ）を追加。`dashboardUpdate` ハンドラ内で全銘柄の `targetAlertInfo`・`volatilityAlertFired` を検査しコンテキストを更新。`alertSettingsLoaded` イベントを追加
 - `src/hooks/usePriceStream.ts`：`volatilityThreshold` Props と `showVolatilityAlert`・`setShowVolatilityAlert` の返却を削除。Props は `{ symbol }` のみ
 - `src/components/AlertSettings.tsx`：Props から `currentPrice` を削除。ローカルの価格比較 `useEffect` を削除。`alertSettings` コンテキストからの初期値設定（`initializedRef` で1回のみ実行）。`targetAlertEvent` を `useEffect` で監視して Snackbar 表示・autoReset 時のフォーム値更新。`onFocus` 時に `socket.emit("alertInputFocus")`、`onBlur` 時に `socket.emit("saveTargetAlert")`
-- `src/components/VolatilitySettings.tsx`：Props を `{ symbol }` のみに変更（`onWindowChange`・`onThresholdChange` を削除）。`alertSettings` コンテキストからの初期値設定（`initializedRef` で1回のみ）。`onBlur` 時に有効値のみ `socket.emit("saveVolatilityAlert")`
-- `src/components/SymbolPanel.tsx`：`volatilityWindowSec`・`volatilityThreshold` state を削除。`usePriceStream` の呼び出しを `{ symbol }` のみに変更。`volatilityAlertEvent` をコンテキストから取得し `showVolatilityAlert` を制御。`AlertSettings`・`VolatilitySettings` への Props を `symbol` のみに変更
+- `src/components/VolatilitySettings.tsx`：Props を `{ symbol }` のみに変更（`onWindowChange`・`onThresholdChange` を削除）。`alertSettings` コンテキストからの初期値設定（`initializedRef` で1回のみ）。`onBlur` 時に有効値のみ `socket.emit("saveVolatilityAlert")`。ボラティリティアラートの Snackbar を `SymbolPanel` から移動して追加（`volatilityAlertEvent` を `useEffect` で監視・`showAlert` state で開閉制御）。Snackbar メッセージには `volatilityAlertEvent.changePercent`（発火時点の値）を使用
+- `src/components/SymbolPanel.tsx`：`volatilityWindowSec`・`volatilityThreshold` state を削除。`usePriceStream` の呼び出しを `{ symbol }` のみに変更。`volatilityAlertEvent` をコンテキストから取得し `showVolatilityAlert`（カードの赤枠アニメーション用）を制御。Snackbar を `VolatilitySettings` に移動したため削除。`showVolatilityAlert` は 5 秒後に自動リセットする `useEffect`（`setTimeout` + クリーンアップ）で `false` に戻す。`AlertSettings`・`VolatilitySettings` への Props を `symbol` のみに変更
+- `src/main.tsx`：開発時のみ `console.error` をラップし、Emotion の `:first-child` 警告（SSR 非使用のため無害な偽陽性）を抑制。`import.meta.env.DEV` で判定し本番ビルドには影響しない
 
 ### 現在のファイル構成
 

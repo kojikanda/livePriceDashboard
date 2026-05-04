@@ -1,5 +1,13 @@
 import { useState, useEffect, useRef } from "react";
-import { Box, Card, CardContent, TextField, Typography } from "@mui/material";
+import {
+  Box,
+  Card,
+  CardContent,
+  TextField,
+  Typography,
+  Snackbar,
+  Alert,
+} from "@mui/material";
 import { socket } from "../lib/socket";
 import { useDashboard } from "../hooks/useDashboard";
 import type { CryptoSymbol } from "../types/price";
@@ -30,7 +38,7 @@ type Props = {
  */
 export function VolatilitySettings({ symbol }: Props) {
   // コンテキストからDBから読み込んだ設定を取得
-  const { alertSettings } = useDashboard();
+  const { alertSettings, volatilityAlertEvent } = useDashboard();
   // 監視ウィンドウの入力値
   const [windowInput, setWindowInput] = useState(String(VOL_WINDOW_DEFAULT));
   // アラート閾値の入力値
@@ -41,6 +49,8 @@ export function VolatilitySettings({ symbol }: Props) {
   const [windowError, setWindowError] = useState(false);
   // アラート閾値の入力エラー発生有無
   const [thresholdError, setThresholdError] = useState(false);
+  // トースト表示中かどうか
+  const [showAlert, setShowAlert] = useState(false);
 
   // 一度だけ初期化するためのフラグ
   const initializedRef = useRef(false);
@@ -55,6 +65,13 @@ export function VolatilitySettings({ symbol }: Props) {
     setThresholdInput(String(initial.threshold));
     initializedRef.current = true;
   }, [alertSettings, symbol]);
+
+  // バックエンドからのボラティリティアラート発火通知を受け取ったときの処理
+  useEffect(() => {
+    if (volatilityAlertEvent?.symbol === symbol) {
+      setShowAlert(true);
+    }
+  }, [volatilityAlertEvent, symbol]);
 
   // 監視ウィンドウの値変更時のイベントハンドラ
   const handleWindowChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -142,6 +159,22 @@ export function VolatilitySettings({ symbol }: Props) {
           />
         </Box>
       </CardContent>
+
+      <Snackbar
+        open={showAlert}
+        autoHideDuration={5000}
+        onClose={() => setShowAlert(false)}
+        anchorOrigin={{ vertical: "top", horizontal: "center" }}
+      >
+        <Alert
+          severity="warning"
+          variant="filled"
+          onClose={() => setShowAlert(false)}
+        >
+          {symbol}：急激な価格変動を検知しました！（
+          {volatilityAlertEvent?.changePercent.toFixed(2)}%）
+        </Alert>
+      </Snackbar>
     </Card>
   );
 }

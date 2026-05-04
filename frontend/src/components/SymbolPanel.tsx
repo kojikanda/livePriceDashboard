@@ -7,8 +7,6 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
-  Snackbar,
-  Alert,
 } from "@mui/material";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
@@ -27,6 +25,8 @@ import type { CryptoSymbol } from "../types/price";
 const BROADCAST_CYCLE_SEC = 5;
 // グラフ表示期間のデフォルト値（分）
 const CHART_DURATION_MIN_DEFAULT = 5;
+// ボラティリティアラート発火時の赤フラッシュの1サイクルの時間（秒）
+const PULSE_RED_TOTAL_DURATION_SEC = 5000;
 
 // 価格上昇時のフラッシュアニメーション設定
 const flashUp = keyframes`                                                                                                       
@@ -80,6 +80,16 @@ export function SymbolPanel({ symbol }: Props) {
       setShowVolatilityAlert(true);
     }
   }, [volatilityAlertEvent, symbol]);
+
+  // showVolatilityAlertがtrueになったら、5秒後に自動リセット
+  useEffect(() => {
+    if (!showVolatilityAlert) return;
+    const timer = setTimeout(
+      () => setShowVolatilityAlert(false),
+      PULSE_RED_TOTAL_DURATION_SEC,
+    );
+    return () => clearTimeout(timer);
+  }, [showVolatilityAlert]);
 
   // 前回価格（再レンダリング不要なので、useRefを使用）
   const prevPriceRef = useRef<number | null>(null);
@@ -246,23 +256,6 @@ export function SymbolPanel({ symbol }: Props) {
           <VolatilitySettings symbol={symbol} />
         </AccordionDetails>
       </Accordion>
-
-      {/* ボラティリティアラートのSnackbar表示 */}
-      <Snackbar
-        open={showVolatilityAlert}
-        autoHideDuration={5000}
-        onClose={() => setShowVolatilityAlert(false)}
-        anchorOrigin={{ vertical: "top", horizontal: "center" }}
-      >
-        <Alert
-          severity="warning"
-          variant="filled"
-          onClose={() => setShowVolatilityAlert(false)}
-        >
-          {symbol}：急激な価格変動を検知しました！（{changePercent?.toFixed(2)}
-          %）
-        </Alert>
-      </Snackbar>
     </Box>
   );
 }
