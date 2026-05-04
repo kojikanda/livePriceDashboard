@@ -16,20 +16,6 @@ export type PriceData = {
 export type CryptoSymbol = "BTC" | "ETH" | "SOL";
 
 /**
- * 銘柄情報
- */
-export type PriceStreamOptions = {
-  // 銘柄
-  symbol: CryptoSymbol;
-  // 価格の履歴数
-  maxHistory: number;
-  // ボラティリティアラートの監視ウィンドウ(秒)
-  volatilityWindowSec: number;
-  // ボラティリティアラートの閾値(%)
-  volatilityThreshold: number;
-};
-
-/**
  * サーバから受信するデータの型（3銘柄分をまとめて受信）
  */
 export type PricePayload = Record<CryptoSymbol, number>;
@@ -75,18 +61,65 @@ export const SENTIMENT_WINDOWS = [10, 50, 100, 300] as const;
 export type SentimentWindow = (typeof SENTIMENT_WINDOWS)[number];
 
 /**
- * バックエンドから受信する1銘柄分のデータ
+ * ターゲット価格アラートが発火したときの情報
  */
-export type DashboardSymbolData = {
-  currentPrice: number;
-  priceHistory: PriceData[];
-  sentimentResults: Record<SentimentWindow, SentimentResult>;
-  priceChanges: PriceChangeSummary[];
-  volatilityScore: number | null;
-  changePercent: number | null;
+export type TargetAlertInfo = {
+  side: "high" | "low";
+  price: number;
+  newHigh?: number;
+  newLow?: number;
 };
 
 /**
- * バックエンドから受信する全銘柄分のデータ
+ * バックエンドから受信する1銘柄分のデータ
+ */
+export type DashboardSymbolData = {
+  // 現在価格
+  currentPrice: number;
+  // 価格履歴
+  priceHistory: PriceData[];
+  // センチメント集計結果
+  sentimentResults: Record<SentimentWindow, SentimentResult>;
+  // 騰落率サマリーの配列
+  priceChanges: PriceChangeSummary[];
+  // ボラティリティスコア
+  volatilityScore: number | null;
+  // 騰落率
+  changePercent: number | null;
+  // ターゲット価格アラートの発火情報(アラート発生時のみ)
+  targetAlertInfo?: TargetAlertInfo;
+  // ボラティリティアラートの発火フラグ(アラート発生時のみ)
+  volatilityAlertFired?: boolean;
+};
+
+/**
+ * バックエンドから受信した全銘柄分のデータ
  */
 export type DashboardPayload = Record<CryptoSymbol, DashboardSymbolData>;
+
+/**
+ * バックエンドから受信するアラート設定情報
+ */
+export type AlertSettingsPayload = {
+  // ターゲット価格アラートの設定値
+  targetAlerts: Partial<
+    Record<
+      CryptoSymbol,
+      {
+        targetHigh: number | null;
+        targetLow: number | null;
+        autoReset: boolean;
+      }
+    >
+  >;
+  // ボラティリティアラートの設定値
+  volatilitySettings: Partial<
+    Record<
+      CryptoSymbol,
+      {
+        windowSec: number;
+        threshold: number;
+      }
+    >
+  >;
+};

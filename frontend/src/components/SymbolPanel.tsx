@@ -15,6 +15,7 @@ import TrendingUpIcon from "@mui/icons-material/TrendingUp";
 import TrendingDownIcon from "@mui/icons-material/TrendingDown";
 import { keyframes } from "@mui/system";
 import { usePriceStream } from "../hooks/usePriceStream";
+import { useDashboard } from "../hooks/useDashboard";
 import { PriceChart } from "./PriceChart";
 import { AlertSettings } from "./AlertSettings";
 import { VolatilitySettings } from "./VolatilitySettings";
@@ -22,18 +23,22 @@ import { MarketSentiment } from "./MarketSentiment";
 import { VolatilityScore } from "./VolatilityScore";
 import type { CryptoSymbol } from "../types/price";
 
+// バックエンドからの送信周期（秒）
 const BROADCAST_CYCLE_SEC = 5;
-const DEFAULT_VOLATILITY_WINDOW_SEC = 60;
-const DEFAULT_VOLATILITY_THRESHOLD = 1.0;
+// グラフ表示期間のデフォルト値（分）
+const CHART_DURATION_MIN_DEFAULT = 5;
 
+// 価格上昇時のフラッシュアニメーション設定
 const flashUp = keyframes`                                                                                                       
     from { color: #4caf50; }
     to   { color: inherit; }                                                                                                       
   `;
+// 価格下降時のフラッシュアニメーション設定
 const flashDown = keyframes`
     from { color: #f44336; }
     to   { color: inherit; }
   `;
+// ボラティリティアラート発火時の赤フラッシュアニメーション設定
 const pulseRed = keyframes`
     0%   { opacity: 0.1; }                                                                                                         
     50%  { opacity: 0.3; }
@@ -45,16 +50,13 @@ type Props = {
 };
 
 export function SymbolPanel({ symbol }: Props) {
-  // ボラティリティアラートの監視ウィンドウ(秒)
-  const [volatilityWindowSec, setVolatilityWindowSec] = useState(
-    DEFAULT_VOLATILITY_WINDOW_SEC,
-  );
-  // ボラティリティアラートの閾値(%)
-  const [volatilityThreshold, setVolatilityThreshold] = useState(
-    DEFAULT_VOLATILITY_THRESHOLD,
-  );
+  // コンテキストからボラティリティアラート発火イベントを取得
+  const { volatilityAlertEvent } = useDashboard();
+
   // グラフの表示期間(分)
-  const [chartDurationMin, setChartDurationMin] = useState(5);
+  const [chartDurationMin, setChartDurationMin] = useState(
+    CHART_DURATION_MIN_DEFAULT,
+  );
 
   // グラフ表示に必要な件数
   const chartHistorySize = (chartDurationMin * 60) / BROADCAST_CYCLE_SEC + 1;
@@ -67,12 +69,17 @@ export function SymbolPanel({ symbol }: Props) {
     priceChanges,
     volatilityScore,
     changePercent,
-    showVolatilityAlert,
-    setShowVolatilityAlert,
-  } = usePriceStream({
-    symbol,
-    volatilityThreshold,
-  });
+  } = usePriceStream({ symbol });
+
+  // ボラティリティアラート発火時のSnackbar表示フラグ
+  const [showVolatilityAlert, setShowVolatilityAlert] = useState(false);
+
+  // ボラティリティアラート発火イベントを監視してSnackbar表示フラグを更新
+  useEffect(() => {
+    if (volatilityAlertEvent?.symbol === symbol) {
+      setShowVolatilityAlert(true);
+    }
+  }, [volatilityAlertEvent, symbol]);
 
   // 前回価格（再レンダリング不要なので、useRefを使用）
   const prevPriceRef = useRef<number | null>(null);
@@ -109,7 +116,7 @@ export function SymbolPanel({ symbol }: Props) {
           overflow: "hidden", // アニメーションが角からはみ出さないようにする
           border: showVolatilityAlert
             ? "3px solid #f44336"
-            : "1px solid rgba(255, 255, 255, 0.12)", // 非アラート時も枠線を少し出すと馴染む
+            : "1px solid rgba(255, 255, 255, 0.12)",
           transition: "border 0.3s ease",
 
           // アラート時のみ ::after 擬似要素を出現させる
@@ -235,13 +242,8 @@ export function SymbolPanel({ symbol }: Props) {
           <Typography>アラート設定</Typography>
         </AccordionSummary>
         <AccordionDetails>
-          <AlertSettings symbol={symbol} currentPrice={currentPrice} />
-          <VolatilitySettings
-            volatilityWindowSec={volatilityWindowSec}
-            volatilityThreshold={volatilityThreshold}
-            onWindowChange={setVolatilityWindowSec}
-            onThresholdChange={setVolatilityThreshold}
-          />
+          <AlertSettings symbol={symbol} />
+          <VolatilitySettings symbol={symbol} />
         </AccordionDetails>
       </Accordion>
 

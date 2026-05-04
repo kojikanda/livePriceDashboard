@@ -244,7 +244,7 @@ Binance APIからは、価格だけでなく「取引量（Volume）」も取れ
 
 - **Step 1**（完了）：DB・認証の基盤整備
 - **Step 2**（完了）：バックエンドの計算処理移行・ユーザごとの個別送信
-- **Step 3**（未着手）：設定値のDB保存・アラート判定移行
+- **Step 3**（完了）：設定値のDB保存・アラート判定移行
 - **Step 4**（未着手）：ポートフォリオのDB保存と計算移行
 
 ---
@@ -338,6 +338,77 @@ Binance APIからは、価格だけでなく「取引量（Volume）」も取れ
 - `src/components/SymbolPanel.tsx`：`maxHistory`・`SENTIMENT_MIN_HISTORY` 定数を削除。上記フックとコンポーネントの変更後の Props に対応
 - `src/pages/Dashboard.tsx`：`<DashboardProvider>` で全体をラップ（`DashboardProvider` は `AuthProvider` の内側に配置）
 
+#### フェーズ2 Step 3：設定値のDB保存・アラート判定移行（完了）
+
+**設計上の重要な決定事項**
+- アラート情報（`targetAlertInfo?`・`volatilityAlertFired?`）は `dashboardUpdate` ペイロードに含める設計を採用（別イベントにしない）
+  - 理由：アラート判定と価格更新は同一タイミング（5秒ごとの interval）で行われるため、まとめて1回の送信にすべき
+- `checkTargetAlert` は `{ alertInfo, upsertTask }` を返す設計（socket.emit はしない）
+  - 理由：in-memory 状態の更新（同期）と DB 書き込み（非同期）を分離し、emit タイミングを DB の速度に引きずられないようにする
+- 全ユーザ分の upsert Promise を収集し `Promise.all` で並列実行（interval をブロックしない）
+  - `void Promise.all(upsertTasks).catch(console.error)` で emit ループ完了後に発火
+- ソケットごとのアラート状態は各 calc モジュール内の `Map<socketId, ...>` で管理（`index.ts` は DB を直接触らない）
+- `initTargetAlertState`・`initVolatilityState` は `async` 関数でDB読み込みをモジュール内に閉じ込め、`index.ts` は `Promise.all` で並列初期化
+
+**ソケットイベント**
+
+| 方向 | イベント名 | ペイロード |
+|------|-----------|-----------|
+| Client → Server | `saveTargetAlert` | `{ symbol, targetHigh, targetLow, autoReset }` |
+| Client → Server | `saveVolatilityAlert` | `{ symbol, windowSec, threshold }` |
+| Client → Server | `alertInputFocus` | `{ symbol }` — 入力中アラート停止 |
+| Server → Client | `alertSettingsLoaded` | 接続時にDBから読み込んだ全銘柄の設定値 |
+| Server → Client | `dashboardUpdate` | 既存。`targetAlertInfo?`・`volatilityAlertFired?` フィールドを追加 |
+
+**Backend 新規ファイル**
+- `src/db/alertSettings.ts`：アラート設定の DB アクセス関数
+  - `loadTargetAlerts(userId)`・`upsertTargetAlert(userId, symbol, ...)` — ターゲット価格アラート
+  - `loadVolatilitySettings(userId)`・`upsertVolatilitySetting(userId, symbol, ...)` — ボラティリティアラート
+  - UPSERT は `INSERT ... ON CONFLICT ... DO UPDATE` 構文で1クエリに統一
+  - 全 DB アクセスに `.catch(console.error)` を追加
+- `src/calc/targetAlert.ts`：ターゲット価格アラートのロジックと per-socket 状態管理
+  - `targetAlertStates: Map<socketId, { userId, alerts }>` をモジュールスコープで保持
+  - `initTargetAlertState(socketId, userId)`：DB から読み込んで Map を初期化（async）
+  - `saveTargetAlertState(socketId, symbol, ...)`：DB 保存・Map 更新・paused 解除（async）
+  - `pauseTargetAlert(socketId, symbol)`：`paused = true` にセット（onFocus 時）
+  - `removeTargetAlertState(socketId)`：disconnect 時に Map からエントリを削除
+  - `checkTargetAlert(socketId, symbol, currentPrice)`：同期でアラート判定・in-memory 更新。戻り値 `{ alertInfo, upsertTask }` — autoReset 時のみ upsertTask に Promise が入る
+  - `getTargetAlertSettings(socketId)`：`alertSettingsLoaded` 送信用の設定値を返す
+  - `OFFSET_RATE = 0.01`（自動再設定の ±1% オフセット）
+- `src/calc/volatilityAlert.ts`：ボラティリティアラートのロジックと per-socket 状態管理
+  - `volatilitySettingStates: Map<socketId, { userId, settings }>` をモジュールスコープで保持
+  - `initVolatilityState(socketId, userId)`：DB から読み込んで Map を初期化（async）
+  - `saveVolatilitySetting(socketId, symbol, windowSec, threshold)`：DB 保存・Map 更新（async）
+  - `removeVolatilityState(socketId)`：disconnect 時に Map からエントリを削除
+  - `getVolatilityWindowSec(socketId, symbol, defaultSec)`：interval 内で changePercent 計算用の windowSec を返す
+  - `checkVolatilityAlert(socketId, symbol, changePercent)`：閾値を超えていれば `true` を返す（同期）
+  - `getVolatilitySettings(socketId)`：`alertSettingsLoaded` 送信用の設定値を返す
+
+**Backend 変更ファイル**
+- `src/types.ts`
+  - `CryptoSymbol` 型（`"BTC" | "ETH" | "SOL"`）を追加
+  - `TargetAlertInfo` 型（`side`・`price`・`newHigh?`・`newLow?`）を追加
+  - `AlertSettingsPayload` 型（`alertSettingsLoaded` イベント用）を追加
+  - `DashboardSymbolData` に `targetAlertInfo?: TargetAlertInfo` と `volatilityAlertFired?: boolean` を追加
+  - `SocketAlertState`・`TargetAlertState`・`VolatilityAlertState` は各 calc モジュールに移動し削除
+- `src/index.ts`
+  - `buildSymbolData(symbol, windowSec)` に `windowSec` パラメータを追加（ユーザごとに異なる windowSec を使用）
+  - `io.on("connection")` を `async` に変更。`Promise.all` で両モジュールの初期化を並列実行
+  - `saveTargetAlert`・`saveVolatilityAlert`・`alertInputFocus` イベントハンドラを追加
+  - `disconnect` で両モジュールの状態を削除
+  - interval 内：ユーザごとに `getVolatilityWindowSec` でペイロードを組み立て、`checkTargetAlert` と `checkVolatilityAlert` でアラート判定し結果をペイロードに含める。全 upsertTask を収集し `void Promise.all(upsertTasks).catch(console.error)` で並列実行
+
+**Frontend 変更ファイル**
+- `src/types/price.ts`：`TargetAlertInfo`・`AlertSettingsPayload` を追加。`DashboardSymbolData` に `targetAlertInfo?`・`volatilityAlertFired?` を追加。未使用の `PriceStreamOptions` を削除
+- `src/context/DashboardContext.ts`：`alertSettings`・`targetAlertEvent`・`volatilityAlertEvent` を `DashboardContextType` に追加
+  - `targetAlertEvent`：`(TargetAlertInfo & { symbol, key })` — `key` はカウンタで useEffect の依存に使用
+  - `volatilityAlertEvent`：`{ symbol, changePercent, key }`
+- `src/context/DashboardProvider.tsx`：`alertKeyRef`（カウンタ）を追加。`dashboardUpdate` ハンドラ内で全銘柄の `targetAlertInfo`・`volatilityAlertFired` を検査しコンテキストを更新。`alertSettingsLoaded` イベントを追加
+- `src/hooks/usePriceStream.ts`：`volatilityThreshold` Props と `showVolatilityAlert`・`setShowVolatilityAlert` の返却を削除。Props は `{ symbol }` のみ
+- `src/components/AlertSettings.tsx`：Props から `currentPrice` を削除。ローカルの価格比較 `useEffect` を削除。`alertSettings` コンテキストからの初期値設定（`initializedRef` で1回のみ実行）。`targetAlertEvent` を `useEffect` で監視して Snackbar 表示・autoReset 時のフォーム値更新。`onFocus` 時に `socket.emit("alertInputFocus")`、`onBlur` 時に `socket.emit("saveTargetAlert")`
+- `src/components/VolatilitySettings.tsx`：Props を `{ symbol }` のみに変更（`onWindowChange`・`onThresholdChange` を削除）。`alertSettings` コンテキストからの初期値設定（`initializedRef` で1回のみ）。`onBlur` 時に有効値のみ `socket.emit("saveVolatilityAlert")`
+- `src/components/SymbolPanel.tsx`：`volatilityWindowSec`・`volatilityThreshold` state を削除。`usePriceStream` の呼び出しを `{ symbol }` のみに変更。`volatilityAlertEvent` をコンテキストから取得し `showVolatilityAlert` を制御。`AlertSettings`・`VolatilitySettings` への Props を `symbol` のみに変更
+
 ### 現在のファイル構成
 
 ```
@@ -346,13 +417,16 @@ livePriceDashboard/
 │   ├── src/
 │   │   ├── index.ts
 │   │   ├── env.ts                  （環境変数ロード）
-│   │   ├── types.ts                （DashboardPayload など共有型）
+│   │   ├── types.ts                （DashboardPayload・TargetAlertInfo・AlertSettingsPayload など共有型）
 │   │   ├── calc/
 │   │   │   ├── sentiment.ts        （センチメント・騰落率計算）
-│   │   │   └── volatility.ts       （ボラティリティスコア・変化率計算）
+│   │   │   ├── volatility.ts       （ボラティリティスコア・変化率計算）
+│   │   │   ├── targetAlert.ts      （ターゲット価格アラート判定・per-socket 状態管理）
+│   │   │   └── volatilityAlert.ts  （ボラティリティアラート判定・per-socket 状態管理）
 │   │   ├── db/
 │   │   │   ├── client.ts           （PostgreSQL 接続プール）
-│   │   │   └── schema.sql          （テーブル定義）
+│   │   │   ├── schema.sql          （テーブル定義）
+│   │   │   └── alertSettings.ts    （アラート設定の DB アクセス関数）
 │   │   ├── auth/
 │   │   │   ├── jwt.ts              （JWT 生成・検証）
 │   │   │   └── middleware.ts       （Socket.io 認証ミドルウェア）
@@ -370,8 +444,8 @@ livePriceDashboard/
 │   │   ├── context/
 │   │   │   ├── AuthContext.ts      （コンテキスト定義・型）
 │   │   │   ├── AuthProvider.tsx    （認証状態管理コンポーネント）
-│   │   │   ├── DashboardContext.ts （コンテキスト定義・型）
-│   │   │   └── DashboardProvider.tsx（dashboardUpdate 受信・配布）
+│   │   │   ├── DashboardContext.ts （コンテキスト定義・型。alertSettings・alertEvent を含む）
+│   │   │   └── DashboardProvider.tsx（dashboardUpdate 受信・アラートイベント抽出・配布）
 │   │   ├── lib/
 │   │   │   └── socket.ts           （socket シングルトン）
 │   │   ├── hooks/
@@ -408,6 +482,5 @@ livePriceDashboard/
 
 ### 次回以降の候補タスク
 
-- フェーズ2 Step 3：設定値のDB保存・アラート判定移行（ターゲット価格アラート・ボラティリティアラート）
 - フェーズ2 Step 4：ポートフォリオのDB保存と計算移行
 - Renderへのデプロイ（フェーズ2完了後）

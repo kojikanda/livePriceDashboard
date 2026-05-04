@@ -91,46 +91,6 @@ export type DashboardSymbolData = {
  */
 export type DashboardPayload = Record<CryptoSymbol, DashboardSymbolData>;
 
-// /**
-//  * ソケット接続中の1銘柄分のターゲット価格アラートの状態
-//  */
-// export type TargetAlertState = {
-//   // 上限価格
-//   targetHigh: number | null;
-//   // 下限価格
-//   targetLow: number | null;
-//   // アラート自動リセットの有無
-//   autoReset: boolean;
-//   // 上限アラート発火済みフラグ
-//   firedHigh: boolean;
-//   // 下限アラート発火済みフラグ
-//   firedLow: boolean;
-//   // アラート一時停止フラグ(フロントエンドで入力中はtrue)
-//   paused: boolean;
-// };
-
-// /**
-//  * ソケット接続中の1銘柄分のボラティリティアラートの設定
-//  */
-// export type VolatilityAlertState = {
-//   // ボラティリティアラート判定のウィンドウ秒数
-//   windowSec: number;
-//   // ボラティリティアラート判定の閾値
-//   threshold: number;
-// };
-
-// /**
-//  * ソケット1接続分のアラート状態（全銘柄）
-//  */
-// export type SocketAlertState = {
-//   // ユーザID
-//   userId: number;
-//   // ターゲット価格アラートの状態
-//   targetAlerts: Partial<Record<CryptoSymbol, TargetAlertState>>;
-//   // ボラティリティアラートの状態
-//   volatilitySettings: Partial<Record<CryptoSymbol, VolatilityAlertState>>;
-// };
-
 /**
  * alertSettingsLoaded イベントのペイロード（フロントエンドへの初期値配信）
  */

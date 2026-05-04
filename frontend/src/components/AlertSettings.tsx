@@ -8,22 +8,22 @@ import {
   Switch,
   FormControlLabel,
 } from "@mui/material";
-
-// 自動再設定値を算出する現在価格に対する割合
-const OFFSET_RATE = 0.01;
+import { socket } from "../lib/socket";
+import { useDashboard } from "../hooks/useDashboard";
+import type { CryptoSymbol } from "../types/price";
 
 type Props = {
-  symbol: string;
-  currentPrice: number | null;
+  symbol: CryptoSymbol;
 };
 
 /**
  * アラート設定・表示コンポーネント
  * @param props.symbol 銘柄のシンボル
- * @param props.currentPrice 現在の価格
  * @returns アラート設定・表示コンポーネント
  */
-export function AlertSettings({ symbol, currentPrice }: Props) {
+export function AlertSettings({ symbol }: Props) {
+  // コンテキストからアラート設定とターゲット価格アラート発火イベントを取得
+  const { alertSettings, targetAlertEvent } = useDashboard();
   // 上限価格の設定値
   const [targetHigh, setTargetHigh] = useState<string>("");
   // 下限価格の設定値
@@ -37,93 +37,87 @@ export function AlertSettings({ symbol, currentPrice }: Props) {
   // 上限価格・下限価格入力中かどうかを保持する
   const [focusedField, setFocusedField] = useState<"high" | "low" | null>(null);
 
-  // 上限価格以上、下限価格以下の情報を保持する
-  // この値の変化でレンダリングを発生させないため、useRefを使う
-  const alertedRef = useRef<{ high: boolean; low: boolean }>({
-    high: false,
-    low: false,
-  });
+  // 一度だけ初期化するためのフラグ
+  const initializedRef = useRef(false);
 
-  /**
-   * 自動再設定動作による上限・下限価格再設定処理
-   */
-  const setTargetValueByAutoReset = useCallback(
-    (cPrice: number, isExceedUpperLimit: boolean) => {
-      const newHigh = cPrice * (1 + OFFSET_RATE);
-      const newLow = cPrice * (1 - OFFSET_RATE);
+  // DBから読み込んだ設定で初期化する（接続後に1回だけ実行）
+  useEffect(() => {
+    if (initializedRef.current) return;
+    const initial = alertSettings?.targetAlerts?.[symbol];
+    if (!initial) return;
+
+    setTargetHigh(initial.targetHigh != null ? String(initial.targetHigh) : "");
+    setTargetLow(initial.targetLow != null ? String(initial.targetLow) : "");
+    setAutoReset(initial.autoReset);
+    initializedRef.current = true;
+  }, [alertSettings, symbol]);
+
+  // バックエンドからのアラート発火通知を受け取る
+  useEffect(() => {
+    if (!targetAlertEvent || targetAlertEvent.symbol !== symbol) return;
+
+    const { side, price, newHigh, newLow } = targetAlertEvent;
+    const limitStr = side === "high" ? "上限" : "下限";
+
+    if (newHigh != null && newLow != null) {
+      // 上限価格・下限価格再設定あり：フォームの表示値を新しい設定値に更新する
       setTargetHigh(newHigh.toFixed(2));
       setTargetLow(newLow.toFixed(2));
-
-      const limitStr = isExceedUpperLimit ? "上限" : "下限";
       setAlertMessage(
-        `
-        ${symbol} が${limitStr}価格に到達 → 
-        次のアラートを $${newHigh.toLocaleString(undefined, { maximumFractionDigits: 2 })} / 
-        $${newLow.toLocaleString(undefined, { maximumFractionDigits: 2 })} に自動設定しました
-        `,
+        `${symbol} が${limitStr}価格に到達（$${price.toLocaleString()}）→ ` +
+          `次のアラートを $${newHigh.toLocaleString(undefined, { maximumFractionDigits: 2 })} / ` +
+          `$${newLow.toLocaleString(undefined, { maximumFractionDigits: 2 })} に自動設定しました`,
       );
+    } else {
+      // 上限価格・下限価格再設定なし：フォームの表示値はそのままで、アラートメッセージのみ更新する
+      setAlertMessage(
+        `${symbol} が${limitStr}価格（$${price.toLocaleString()}）に到達しました`,
+      );
+    }
+    setOpen(true);
+    // targetAlertEvent.key の変化でのみ反応させる
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetAlertEvent?.key, symbol]);
+
+  // 上限価格・下限価格が確定したときに、バックエンドへ設定を送信する
+  const emitSave = useCallback(() => {
+    const high = targetHigh !== "" ? parseFloat(targetHigh) : null;
+    const low = targetLow !== "" ? parseFloat(targetLow) : null;
+    socket.emit("saveTargetAlert", {
+      symbol,
+      targetHigh: high,
+      targetLow: low,
+      autoReset,
+    });
+  }, [symbol, targetHigh, targetLow, autoReset]);
+
+  // 上限価格の入力が確定したときの処理
+  const handleHighBlur = useCallback(() => {
+    setFocusedField(null);
+    emitSave();
+  }, [emitSave]);
+
+  // 下限価格の入力が確定したときの処理
+  const handleLowBlur = useCallback(() => {
+    setFocusedField(null);
+    emitSave();
+  }, [emitSave]);
+
+  // 自動再設定のON/OFFが切り替わったときの処理
+  const handleAutoResetChange = useCallback(
+    (checked: boolean) => {
+      setAutoReset(checked);
+      const high = targetHigh !== "" ? parseFloat(targetHigh) : null;
+      const low = targetLow !== "" ? parseFloat(targetLow) : null;
+      socket.emit("saveTargetAlert", {
+        symbol,
+        targetHigh: high,
+        targetLow: low,
+        autoReset: checked,
+      });
     },
-    /*
-     * useCallbackに指定する依存配列は、「関数の中で使っている値のうち、レンダリングをまたいで変わりうるもの」。
-     * setTargethighなどのsetterはReactが安定を保証するので指定不要。
-     * symbolはpropsで指定が変わる可能性があるので、要指定。
-     */
-    [symbol],
+    [symbol, targetHigh, targetLow],
   );
-
-  // 上限価格、下限価格との比較結果算出処理
-  useEffect(() => {
-    if (currentPrice === null) return;
-    // 上限価格・下限価格入力中はアラートのチェックを行わない
-    if (focusedField !== null) return;
-
-    const high = parseFloat(targetHigh);
-    const low = parseFloat(targetLow);
-
-    if (!isNaN(high) && currentPrice >= high && !alertedRef.current.high) {
-      // 上限価格以上に変化したとき
-      alertedRef.current.high = true;
-
-      if (autoReset) {
-        // 上限・下限価格自動再設定
-        setTargetValueByAutoReset(currentPrice, true);
-      } else {
-        setAlertMessage(
-          `${symbol} が上限価格 $${high.toLocaleString()} に到達しました`,
-        );
-      }
-      setOpen(true);
-    } else if (currentPrice < high) {
-      // 上限価格未満のとき
-      alertedRef.current.high = false;
-    }
-
-    if (!isNaN(low) && currentPrice <= low && !alertedRef.current.low) {
-      // 下限価格以下に変化したとき
-      alertedRef.current.low = true;
-
-      if (autoReset) {
-        // 上限・下限価格自動再設定
-        setTargetValueByAutoReset(currentPrice, false);
-      } else {
-        setAlertMessage(
-          `${symbol} が下限価格 $${low.toLocaleString()} に到達しました`,
-        );
-      }
-      setOpen(true);
-    } else if (currentPrice > low) {
-      // 下限価格より大きいとき
-      alertedRef.current.low = false;
-    }
-  }, [
-    currentPrice,
-    targetHigh,
-    targetLow,
-    symbol,
-    autoReset,
-    setTargetValueByAutoReset,
-    focusedField,
-  ]);
 
   return (
     <Box sx={{ mt: 4 }}>
@@ -136,8 +130,12 @@ export function AlertSettings({ symbol, currentPrice }: Props) {
           type="number"
           value={targetHigh}
           onChange={(e) => setTargetHigh(e.target.value)}
-          onFocus={() => setFocusedField("high")}
-          onBlur={() => setFocusedField(null)}
+          onFocus={() => {
+            // 入力開始時にfocusedFieldを更新してアラートのチェックを一時停止するためのイベントを送信
+            setFocusedField("high");
+            socket.emit("alertInputFocus", { symbol });
+          }}
+          onBlur={handleHighBlur}
           helperText={
             focusedField === "high"
               ? "入力中はアラートを一時停止しています"
@@ -150,8 +148,12 @@ export function AlertSettings({ symbol, currentPrice }: Props) {
           type="number"
           value={targetLow}
           onChange={(e) => setTargetLow(e.target.value)}
-          onFocus={() => setFocusedField("low")}
-          onBlur={() => setFocusedField(null)}
+          onFocus={() => {
+            // 入力開始時にfocusedFieldを更新してアラートのチェックを一時停止するためのイベントを送信
+            setFocusedField("low");
+            socket.emit("alertInputFocus", { symbol });
+          }}
+          onBlur={handleLowBlur}
           helperText={
             focusedField === "low"
               ? "入力中はアラートを一時停止しています"
@@ -165,7 +167,7 @@ export function AlertSettings({ symbol, currentPrice }: Props) {
         control={
           <Switch
             checked={autoReset}
-            onChange={(e) => setAutoReset(e.target.checked)}
+            onChange={(e) => handleAutoResetChange(e.target.checked)}
             size="small"
           />
         }
