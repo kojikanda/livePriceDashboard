@@ -40,6 +40,7 @@ export function calcSentiment(
  * @param history 価格履歴
  * @param currentPrice 現在の価格
  * @param now 現在時刻のミリ秒
+ * @returns 騰落率サマリーの配列
  */
 export function calcPriceChanges(
   history: PriceData[],
