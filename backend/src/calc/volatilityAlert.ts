@@ -4,11 +4,17 @@ import {
 } from "../db/alertSettings.js";
 import type { CryptoSymbol } from "../types.js";
 
+/**
+ * 1つの接続に対するボラティリティアラートの設定の型
+ */
 type VolatilityAlertState = {
   windowSec: number;
   threshold: number;
 };
 
+/**
+ * ソケット接続ごとのボラティリティアラート設定の型
+ */
 type SocketVolatilityState = {
   userId: number;
   settings: Partial<Record<CryptoSymbol, VolatilityAlertState>>;
@@ -19,6 +25,9 @@ const volatilitySettingStates = new Map<string, SocketVolatilityState>();
 
 /**
  * 接続時：DBから設定を読み込んでMapを初期化する
+ * @param socketId ソケット接続ID
+ * @param userId ユーザID
+ * @returns Promise
  */
 export async function initVolatilityState(socketId: string, userId: number) {
   const rows = await loadVolatilitySettings(userId);
@@ -33,7 +42,12 @@ export async function initVolatilityState(socketId: string, userId: number) {
 }
 
 /**
- * saveVolatilityAlert イベント受信時：DB保存・状態更新
+ * saveVolatilityAlertイベント受信時：DBに設定を保存し、Mapも更新する。
+ * @param socketId ソケット接続ID
+ * @param symbol 銘柄名
+ * @param windowSec ボラティリティアラートの監視ウィンドウ(秒)
+ * @param threshold 閾値
+ * @returns Promise
  */
 export async function saveVolatilitySetting(
   socketId: string,
@@ -48,15 +62,19 @@ export async function saveVolatilitySetting(
 }
 
 /**
- * disconnect 時：Mapからエントリを削除する
+ * disconnect時：Mapからエントリを削除する
  */
 export function removeVolatilityState(socketId: string) {
   volatilitySettingStates.delete(socketId);
 }
 
 /**
- * interval 内でchangePercent計算用のwindowSecを返す
- * 設定がない場合はデフォルト値を返す
+ * ボラティリティアラートの監視ウィンドウを取得する。
+ * 設定がない場合はデフォルト値を返す。
+ * @param socketId ソケット接続ID
+ * @param symbol 銘柄名
+ * @param defaultSec デフォルトの監視ウィンドウ(秒)
+ * @returns 監視ウィンドウ(秒)
  */
 export function getVolatilityWindowSec(
   socketId: string,
@@ -70,8 +88,12 @@ export function getVolatilityWindowSec(
 }
 
 /**
- * interval 内のアラート判定
- * 閾値を超えていれば true を返す
+ * ボラティリティアラートの判定処理。
+ * 閾値を超えていればtrueを返す。
+ * @param socketId ソケット接続ID
+ * @param symbol 銘柄名
+ * @param changePercent 価格変動率
+ * @returns ボラティリティアラート発火の有無
  */
 export function checkVolatilityAlert(
   socketId: string,
@@ -85,7 +107,9 @@ export function checkVolatilityAlert(
 }
 
 /**
- * alertSettingsLoaded 送信用：ボラティリティ設定値を返す
+ * alertSettingsLoaded送信用：ボラティリティ設定値を返す
+ * @param socketId ソケット接続ID
+ * @returns ボラティリティアラートの設定値
  */
 export function getVolatilitySettings(socketId: string) {
   const state = volatilitySettingStates.get(socketId);
