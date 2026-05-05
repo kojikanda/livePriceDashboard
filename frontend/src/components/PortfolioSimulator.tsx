@@ -1,4 +1,4 @@
-import { useState, useEffect, useReducer } from "react";
+import { useState } from "react";
 import {
   Box,
   Button,
@@ -10,50 +10,11 @@ import {
   ToggleButtonGroup,
 } from "@mui/material";
 import { DataGrid, type GridColDef } from "@mui/x-data-grid";
+import { socket } from "../lib/socket";
+import { useDashboard } from "../hooks/useDashboard";
 import { useUsdJpyRate } from "../hooks/useUsdJpyRate";
 import { useCurrentPrices } from "../hooks/useCurrentPrices";
-import type { CryptoSymbol } from "../types/price";
-
-// ポジションの型定義
-type Position = {
-  // DataGridの各行のID
-  id: string;
-  // 銘柄
-  symbol: CryptoSymbol;
-  // 投資金額
-  investedJpy: number;
-  // 購入時の銘柄価格
-  entryPriceUsd: number;
-  // 米ドル・日本円のレート
-  usdJpyRate: number;
-  // 購入数
-  coinAmount: number;
-  // 買い方向(ロング/ショート)
-  direction: "long" | "short";
-};
-
-// 複数ポジションに対する操作の種類
-type Action =
-  | { type: "ADD"; payload: Position }
-  | { type: "REMOVE"; id: string }
-  | { type: "CLEAR" };
-
-/**
- * 複数のポジションに対する操作を定義したreducerメソッド
- * @param state 現在のstate
- * @param action 操作(ADD: 追加(購入), REMOVE: 削除(決済), CLEAR: クリア(全決済))
- * @returns 操作後のstate
- */
-function reducer(state: Position[], action: Action): Position[] {
-  switch (action.type) {
-    case "ADD":
-      return [...state, action.payload];
-    case "REMOVE":
-      return state.filter((p) => p.id !== action.id);
-    case "CLEAR":
-      return [];
-  }
-}
+import type { CryptoSymbol, PortfolioRow } from "../types/price";
 
 /**
  * 指定された値を日本円表示フォーマットの文字列(小数点以下なし, 3桁区切り)に変換する
@@ -81,16 +42,21 @@ function coinDecimals(symbol: CryptoSymbol): number {
 
 /**
  * 仮想ポートシミュレータコンポーネント
- * @param props.currentPrice 現在の価格
  * @returns 仮想ポートシミュレータコンポーネント
  */
 export function PortfolioSimulator() {
+  // コンテキストから受信データを取得
+  const { payload } = useDashboard();
+
   // 選択中の銘柄
   const [selectedSymbol, setSelectedSymbol] = useState<CryptoSymbol>("BTC");
   // 入力中の投資金額（文字列）
   const [investAmount, setInvestAmount] = useState("");
   // 買い方向
   const [direction, setDirection] = useState<"long" | "short">("long");
+
+  // 受信データからポートフォリオ行データを取得
+  const rows: PortfolioRow[] = payload?.portfolio ?? [];
 
   // 現在価格取得用カスタムフック
   const currentPrices = useCurrentPrices();
@@ -100,17 +66,6 @@ export function PortfolioSimulator() {
     loading: rateLoading,
     error: rateError,
   } = useUsdJpyRate();
-
-  // 保有ポジション(初回はlocalStorageから取得)
-  const [positions, dispatch] = useReducer(reducer, [], (): Position[] => {
-    const saved = localStorage.getItem("portfolio_positions");
-    return saved ? (JSON.parse(saved) as Position[]) : [];
-  });
-
-  // positionsが変わるたびにlocalStorageへ保存
-  useEffect(() => {
-    localStorage.setItem("portfolio_positions", JSON.stringify(positions));
-  }, [positions]);
 
   // DataGridの型定義
   const columns: GridColDef[] = [
@@ -205,7 +160,8 @@ export function PortfolioSimulator() {
             variant="outlined"
             size="small"
             color="error"
-            onClick={() => dispatch({ type: "REMOVE", id: params.row.id })}
+            // クリックしたときに該当ポジションのIDをバックエンドへ送信して削除する
+            onClick={() => socket.emit("removePosition", { id: params.row.id })}
           >
             決済
           </Button>
@@ -221,51 +177,25 @@ export function PortfolioSimulator() {
     const jpy = Number(investAmount);
     if (isNaN(jpy) || jpy <= 0) return;
 
-    const newPosition: Position = {
-      id: crypto.randomUUID(),
+    // バックエンドへ購入イベントを送信
+    socket.emit("addPosition", {
       symbol: selectedSymbol,
+      direction,
       investedJpy: jpy,
       entryPriceUsd: price,
       usdJpyRate,
       coinAmount: jpy / (price * usdJpyRate),
-      direction,
-    };
-    dispatch({ type: "ADD", payload: newPosition });
+    });
     setInvestAmount("");
   };
 
-  // DataGrid に渡す行データ（計算済み損益を含む）
-  const rows = positions.map((p) => {
-    // 現在価格
-    const price = currentPrices[p.symbol];
-
-    // 現在保有分の評価額
-    const currentValueJpy =
-      price !== null ? p.coinAmount * price * p.usdJpyRate : null;
-
-    // 含み損益
-    const profitLoss =
-      price !== null
-        ? p.direction === "long"
-          ? (price - p.entryPriceUsd) * p.coinAmount * p.usdJpyRate
-          : (p.entryPriceUsd - price) * p.coinAmount * p.usdJpyRate
-        : null;
-
-    // 騰落率
-    const profitLossRate =
-      profitLoss !== null ? (profitLoss / p.investedJpy) * 100 : null;
-
-    return { ...p, currentValueJpy, profitLoss, profitLossRate };
-  });
-
+  /* サマリー計算（rows から導出） */
   // 合計投資額
-  const totalInvested = positions.reduce((sum, p) => sum + p.investedJpy, 0);
-
+  const totalInvested = rows.reduce((sum, r) => sum + r.investedJpy, 0);
   // 合計損益
   const totalProfitLoss = rows.every((r) => r.profitLoss !== null)
     ? rows.reduce((sum, r) => sum + (r.profitLoss ?? 0), 0)
     : null;
-
   // 選択された銘柄の現在価格
   const selectedPrice = currentPrices[selectedSymbol];
 
@@ -349,7 +279,7 @@ export function PortfolioSimulator() {
         </Box>
 
         {/* ポジション一覧 */}
-        {positions.length > 0 && (
+        {rows.length > 0 && (
           <>
             <DataGrid
               rows={rows}
@@ -388,7 +318,8 @@ export function PortfolioSimulator() {
               variant="outlined"
               color="error"
               size="small"
-              onClick={() => dispatch({ type: "CLEAR" })}
+              // クリックしたときに全決済イベントをバックエンドへ送信
+              onClick={() => socket.emit("clearPositions")}
             >
               全決済（一括清算）
             </Button>

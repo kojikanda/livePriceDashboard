@@ -25,7 +25,7 @@ React、Node.jsの開発はいずれもTypeScriptを利用する。
 
 ---
 
-## 今後やりたいこと
+## やりたいこと
 
 ### ■概要
 
@@ -220,6 +220,7 @@ Binance APIからは、価格だけでなく「取引量（Volume）」も取れ
 #### フェーズ2の方針
 
 **各コンポーネント処理**
+
 - マーケットセンチメント：センチメント・騰落率をバックエンドで算出し、フロントエンドは受信して表示のみ
 - ボラティリティスコア：バックエンドで算出し、フロントエンドは受信して表示のみ
 - ターゲット価格アラート：onBlur 時に設定値をバックエンドへ送信→DBに保存。バックエンドがアラート判定し結果を送信
@@ -252,10 +253,12 @@ Binance APIからは、価格だけでなく「取引量（Volume）」も取れ
 #### フェーズ2 Step 1：DB・認証の基盤整備（完了）
 
 **Backend 追加パッケージ**
+
 - `pg`・`bcryptjs`・`jsonwebtoken`・`cookie-parser`・`cors`・`dotenv`・`cookie`
 - 型定義：`@types/pg`・`@types/bcryptjs`・`@types/jsonwebtoken`・`@types/cookie-parser`・`@types/cors`・`@types/cookie`
 
 **Backend 新規ファイル**
+
 - `src/env.ts`：`NODE_ENV` に応じて `.env.local`（開発）または `.env.prod`（本番）を読み込む。`index.ts` の最初の import として配置することで、他モジュールより先に環境変数を設定する
 - `src/db/client.ts`：`pg.Pool` による PostgreSQL 接続プール。`DATABASE_URL` を環境変数から取得
 - `src/db/schema.sql`：4テーブル定義
@@ -273,20 +276,24 @@ Binance APIからは、価格だけでなく「取引量（Volume）」も取れ
   - `GET /auth/me`：Cookie の JWT を検証し、ユーザ情報を返す（ページリロード時の認証確認用）
 
 **Backend 変更ファイル**
+
 - `src/index.ts`：`import './env.js'` を最初の import に追加。CORS を `credentials: true` + `FRONTEND_URL`（環境変数）で設定。`express.json()`・`cookie-parser` ミドルウェアを追加。`/auth` ルートを追加。Socket.io に認証ミドルウェアを適用（未認証の接続を拒否）
 - `.gitignore`：`.env.prod` を追加
 - `.env.local`（新規・git管理外）：`DATABASE_URL`・`JWT_SECRET`・`PORT`・`NODE_ENV`・`FRONTEND_URL` を定義
 - `.env.prod`（新規・git管理外）：本番用の各環境変数を定義
 
 **認証設計**
+
 - JWT を httpOnly Cookie で管理（JavaScript から読めないため XSS に強い）
 - `secure: true` は本番環境（HTTPS）のみ有効
 - `sameSite: "lax"` で CSRF 基本対策
 
 **Frontend 追加パッケージ**
+
 - `react-router-dom`
 
 **Frontend 新規ファイル**
+
 - `src/types/auth.ts`：`User` 型（`userId`・`email`）
 - `src/context/AuthContext.ts`：`AuthContextType` 型定義と `AuthContext` の `createContext`（JSX なし・`.ts` 拡張子）
 - `src/context/AuthProvider.tsx`：認証状態管理コンポーネント。マウント時に `GET /auth/me` で認証確認。ログイン後に `socket.connect()`、ログアウト後に `socket.disconnect()`
@@ -297,6 +304,7 @@ Binance APIからは、価格だけでなく「取引量（Volume）」も取れ
 - `src/pages/RegisterPage.tsx`：メールアドレス・パスワード・確認用パスワードの入力フォーム。成功時にダッシュボードへ遷移
 
 **Frontend 変更ファイル**
+
 - `src/lib/socket.ts`：`withCredentials: true`（Cookie 送信に必須）・`autoConnect: false`（認証後に手動接続）を追加
 - `src/App.tsx`：`Routes` + `Route` によるルーティングに変更。`/` は `ProtectedRoute` で保護
 - `src/main.tsx`：`BrowserRouter`・`AuthProvider` を追加（`BrowserRouter` が最外側）
@@ -304,6 +312,7 @@ Binance APIからは、価格だけでなく「取引量（Volume）」も取れ
 #### フェーズ2 Step 2：バックエンドの計算処理移行・ユーザごとの個別送信（完了）
 
 **Backend 新規ファイル**
+
 - `src/types.ts`：バックエンドが送信するデータの共有型定義
   - `SentimentWindow`：`10 | 50 | 100 | 300`（パフォーマンスを考慮して絞り込んだウィンドウサイズ）
   - `DashboardSymbolData`：`currentPrice`・`priceHistory`・`sentimentResults`・`priceChanges`・`volatilityScore`・`changePercent` を持つ銘柄ごとのデータ構造
@@ -316,6 +325,7 @@ Binance APIからは、価格だけでなく「取引量（Volume）」も取れ
   - `calcChangePercent(history, windowSec)`：逆順ループで早期終了する実装（`filter` ではなく `for` ループ）
 
 **Backend 変更ファイル**
+
 - `src/index.ts`
   - `priceHistories`（`Record<CryptoSymbol, PriceData[]>`）をモジュールスコープで保持
   - `setInterval` 内で価格履歴へのアペンドと全計算を実施し `DashboardPayload` を組み立て
@@ -324,11 +334,13 @@ Binance APIからは、価格だけでなく「取引量（Volume）」も取れ
   - `FRONTEND_URL` を環境変数から取得（ハードコードを廃止）
 
 **Frontend 新規ファイル**
+
 - `src/context/DashboardContext.ts`：`DashboardContextType` 型定義と `DashboardContext` の `createContext`（JSX なし・`.ts` 拡張子）
 - `src/context/DashboardProvider.tsx`：`socket.on("dashboardUpdate")` を1箇所に集約。受信した `DashboardPayload` を `useState` で保持し Context 経由で配布
 - `src/hooks/useDashboard.ts`：`DashboardContext` を参照するカスタムフック（Fast Refresh 対応のため分離）
 
 **Frontend 変更ファイル**
+
 - `src/types/price.ts`：`SentimentWindow`・`DashboardSymbolData`・`DashboardPayload` を追加
 - `src/lib/socket.ts`：`withCredentials: true`・`autoConnect: false` に変更済み（Step 1 対応）
 - `src/hooks/usePriceStream.ts`：複雑な ref ベースの計算を全て削除。`useDashboard()` からデータを読み取る形に簡素化。Props は `{ symbol, volatilityThreshold }` のみ
@@ -341,6 +353,7 @@ Binance APIからは、価格だけでなく「取引量（Volume）」も取れ
 #### フェーズ2 Step 3：設定値のDB保存・アラート判定移行（完了）
 
 **設計上の重要な決定事項**
+
 - アラート情報（`targetAlertInfo?`・`volatilityAlertFired?`）は `dashboardUpdate` ペイロードに含める設計を採用（別イベントにしない）
   - 理由：アラート判定と価格更新は同一タイミング（5秒ごとの interval）で行われるため、まとめて1回の送信にすべき
 - `checkTargetAlert` は `{ alertInfo, upsertTask }` を返す設計（socket.emit はしない）
@@ -352,15 +365,16 @@ Binance APIからは、価格だけでなく「取引量（Volume）」も取れ
 
 **ソケットイベント**
 
-| 方向 | イベント名 | ペイロード |
-|------|-----------|-----------|
-| Client → Server | `saveTargetAlert` | `{ symbol, targetHigh, targetLow, autoReset }` |
-| Client → Server | `saveVolatilityAlert` | `{ symbol, windowSec, threshold }` |
-| Client → Server | `alertInputFocus` | `{ symbol }` — 入力中アラート停止 |
-| Server → Client | `alertSettingsLoaded` | 接続時にDBから読み込んだ全銘柄の設定値 |
-| Server → Client | `dashboardUpdate` | 既存。`targetAlertInfo?`・`volatilityAlertFired?` フィールドを追加 |
+| 方向            | イベント名            | ペイロード                                                         |
+| --------------- | --------------------- | ------------------------------------------------------------------ |
+| Client → Server | `saveTargetAlert`     | `{ symbol, targetHigh, targetLow, autoReset }`                     |
+| Client → Server | `saveVolatilityAlert` | `{ symbol, windowSec, threshold }`                                 |
+| Client → Server | `alertInputFocus`     | `{ symbol }` — 入力中アラート停止                                  |
+| Server → Client | `alertSettingsLoaded` | 接続時にDBから読み込んだ全銘柄の設定値                             |
+| Server → Client | `dashboardUpdate`     | 既存。`targetAlertInfo?`・`volatilityAlertFired?` フィールドを追加 |
 
 **Backend 新規ファイル**
+
 - `src/db/alertSettings.ts`：アラート設定の DB アクセス関数
   - `loadTargetAlerts(userId)`・`upsertTargetAlert(userId, symbol, ...)` — ターゲット価格アラート
   - `loadVolatilitySettings(userId)`・`upsertVolatilitySetting(userId, symbol, ...)` — ボラティリティアラート
@@ -385,6 +399,7 @@ Binance APIからは、価格だけでなく「取引量（Volume）」も取れ
   - `getVolatilitySettings(socketId)`：`alertSettingsLoaded` 送信用の設定値を返す
 
 **Backend 変更ファイル**
+
 - `src/types.ts`
   - `CryptoSymbol` 型（`"BTC" | "ETH" | "SOL"`）を追加
   - `TargetAlertInfo` 型（`side`・`price`・`newHigh?`・`newLow?`）を追加
@@ -399,6 +414,7 @@ Binance APIからは、価格だけでなく「取引量（Volume）」も取れ
   - interval 内：ユーザごとに `getVolatilityWindowSec` でペイロードを組み立て、`checkTargetAlert` と `checkVolatilityAlert` でアラート判定し結果をペイロードに含める。全 upsertTask を収集し `void Promise.all(upsertTasks).catch(console.error)` で並列実行
 
 **Frontend 変更ファイル**
+
 - `src/types/price.ts`：`TargetAlertInfo`・`AlertSettingsPayload` を追加。`DashboardSymbolData` に `targetAlertInfo?`・`volatilityAlertFired?` を追加。未使用の `PriceStreamOptions` を削除
 - `src/context/DashboardContext.ts`：`alertSettings`・`targetAlertEvent`・`volatilityAlertEvent` を `DashboardContextType` に追加
   - `targetAlertEvent`：`(TargetAlertInfo & { symbol, key })` — `key` はカウンタで useEffect の依存に使用

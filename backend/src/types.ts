@@ -87,9 +87,11 @@ export type DashboardSymbolData = {
 };
 
 /**
- * ダッシュボード全体のデータの型（3銘柄分をまとめて）
+ * ダッシュボード全体のデータの型（3銘柄分＋仮想ポートフォリオシミュレータのデータ）
  */
-export type DashboardPayload = Record<CryptoSymbol, DashboardSymbolData>;
+export type DashboardPayload = Record<CryptoSymbol, DashboardSymbolData> & {
+  portfolio: PortfolioRow[];
+};
 
 /**
  * alertSettingsLoaded イベントのペイロード（フロントエンドへの初期値配信）
@@ -108,4 +110,30 @@ export type AlertSettingsPayload = {
   volatilitySettings: Partial<
     Record<CryptoSymbol, { windowSec: number; threshold: number }>
   >;
+};
+
+/**
+ * 仮想ポートフォリオシミュレータ1行分のデータ
+ */
+export type PortfolioRow = {
+  // ポジションID（UUID）
+  id: string;
+  // 銘柄
+  symbol: CryptoSymbol;
+  // 買い方向
+  direction: "long" | "short";
+  // 投資金額（円）
+  investedJpy: number;
+  // 購入時の価格（USD）
+  entryPriceUsd: number;
+  // 購入時のUSD/JPYレート
+  usdJpyRate: number;
+  // 保有数量
+  coinAmount: number;
+  // 現在の評価額（円）。価格未取得の場合は null
+  currentValueJpy: number | null;
+  // 含み損益（円）。価格未取得の場合は null
+  profitLoss: number | null;
+  // 騰落率（%）。価格未取得の場合は null
+  profitLossRate: number | null;
 };

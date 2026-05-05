@@ -25,6 +25,14 @@ import {
   checkVolatilityAlert,
   getVolatilitySettings,
 } from "./calc/volatilityAlert.js";
+import {
+  initPortfolioState,
+  addPosition,
+  removePosition,
+  clearPortfolio,
+  removePortfolioState,
+  calcPortfolioRows,
+} from "./calc/portfolio.js";
 import type {
   PriceData,
   SentimentWindow,
@@ -35,6 +43,7 @@ import type {
   AlertSettingsPayload,
 } from "./types.js";
 
+// Expressアプリの作成
 const app = express();
 // Socket.ioはExpressを直接使えないため、HTTPサーバーをラップする
 const httpServer = createServer(app);
@@ -201,9 +210,16 @@ setInterval(() => {
       symbolDataMap[symbol] = data;
     }
 
-    // 全銘柄のデータが揃っている場合のみ送信する
+    // 全銘柄のデータが揃っている場合のみ、仮想ポートフォリオシミュレータのデータを追加して送信する
     if (SYMBOLS.every((s) => s in symbolDataMap)) {
-      socket.emit("dashboardUpdate", symbolDataMap as DashboardPayload);
+      // 仮想ポートフォリオシミュレータの情報を作成
+      const portfolio = calcPortfolioRows(socketId, latestPrices);
+
+      // フロントエンドに送信
+      socket.emit("dashboardUpdate", {
+        ...(symbolDataMap as Record<CryptoSymbol, DashboardSymbolData>),
+        portfolio,
+      });
     }
   }
 
@@ -222,6 +238,7 @@ io.on("connection", async (socket) => {
   await Promise.all([
     initTargetAlertState(socket.id, userId),
     initVolatilityState(socket.id, userId),
+    initPortfolioState(socket.id, userId),
   ]).catch(console.error);
 
   // フロントエンドに初期設定値を送信する
@@ -272,10 +289,44 @@ io.on("connection", async (socket) => {
     pauseTargetAlert(socket.id, data.symbol);
   });
 
+  // 仮想ポートフォリオシミュレータ: 購入イベントを受信したときの処理
+  socket.on(
+    "addPosition",
+    (data: {
+      symbol: CryptoSymbol;
+      direction: "long" | "short";
+      investedJpy: number;
+      entryPriceUsd: number;
+      usdJpyRate: number;
+      coinAmount: number;
+    }) => {
+      addPosition(
+        socket.id,
+        data.symbol,
+        data.direction,
+        data.investedJpy,
+        data.entryPriceUsd,
+        data.usdJpyRate,
+        data.coinAmount,
+      ).catch(console.error);
+    },
+  );
+
+  // 仮想ポートフォリオシミュレータ: 1件決済イベントを受信したときの処理
+  socket.on("removePosition", (data: { id: string }) => {
+    removePosition(socket.id, data.id).catch(console.error);
+  });
+
+  // 仮想ポートフォリオシミュレータ: 全決済イベントを受信したときの処理
+  socket.on("clearPositions", () => {
+    clearPortfolio(socket.id).catch(console.error);
+  });
+
   // クライアントが切断されたときの処理
   socket.on("disconnect", () => {
     removeTargetAlertState(socket.id);
     removeVolatilityState(socket.id);
+    removePortfolioState(socket.id);
     console.log("クライアント切断:", socket.id);
   });
 });
