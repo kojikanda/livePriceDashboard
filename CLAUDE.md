@@ -215,7 +215,8 @@ Binance APIからは、価格だけでなく「取引量（Volume）」も取れ
 ### 開発方針
 
 - **フェーズ1**（完了）：ユーザ設定値はフロントエンドの state で管理。仮想ポートフォリオ等の機能を全て実装する。
-- **フェーズ2**（進行中）：以下の方針でバックエンド移行を進める。
+- **フェーズ2**（完了）：以下の方針でバックエンド移行を進める。
+- **フェーズ3**（進行中）：追加修正対応。
 
 #### フェーズ2の方針
 
@@ -563,6 +564,46 @@ livePriceDashboard/
     └── tasks.json
 ```
 
+#### フェーズ3：追加修正対応（進行中）
+
+##### フェーズ3 その1：簡易レスポンシブデザイン対応（完了）
+
+**方針**
+
+- 幅 1350px より大：BTC・ETH・SOL の3銘柄グリッド＋仮想ポートフォリオシミュレータを表示
+- 幅 1350px 以下：BTC のみ表示、仮想ポートフォリオシミュレータは非表示
+
+**実装方針の決定事項**
+
+- ETH・SOL は条件付きレンダリング（アンマウント）ではなく CSS の `display: none` で非表示にする
+  - 理由1：1350px より大きい幅で表示したとき、次の `dashboardUpdate`（最大5秒）まで待たずに即座に表示できる
+  - 理由2：損益計算等はバックエンドで処理するため、DOM が残っていても負荷への影響は軽微
+  - 理由3：基本的に広い画面での利用を前提とした設計のため、厳密な最適化は不要
+- MUI の `sx` prop に `@media (max-width: 1350px)` のカスタムメディアクエリを直接記述（1350px は MUI デフォルトブレークポイント外のため）
+
+**変更ファイル**
+
+- `src/pages/Dashboard.tsx`のみ（1ファイル）
+  - グリッドの `gridTemplateColumns` をレスポンシブに変更（3カラム → 1カラム）
+    - ETH・SOL が非表示になった際に BTC が全幅を占めるよう切り替え
+  - ETH・SOL の `SymbolPanel` を `Box` で包み、`@media (max-width: 1350px)` で `display: none`
+    - `SymbolPanel` はカスタムコンポーネントで `sx` prop を受け取らないため `Box` でラップが必要
+  - 仮想ポートフォリオ `Accordion` に `@media (max-width: 1350px): { display: "none" }` を追加
+
+##### フェーズ3 その2：ログアウトボタンの追加（完了）
+
+**変更ファイル**
+
+- `src/pages/Dashboard.tsx` のみ（1ファイル）
+  - `useAuth()` から `logout`・`user` を取得
+  - タイトル行を flex レイアウト（`justifyContent: "space-between"`）に変更し、左にタイトル・右にユーザ情報＋ログアウトボタンを配置
+  - ログインユーザのメールアドレス（`user?.email`）を `Typography` で表示
+  - `LogoutIcon`（`@mui/icons-material/Logout`）付きの `Button`（`variant="outlined"` / `size="small"`）を追加
+  - `Tooltip` でホバー時に「ログアウト」の説明を表示
+  - `onClick={() => void logout()}` の `void` は、`logout` が `async` 関数であるため意図的に Promise を捨てることを TypeScript に伝えるための記述
+  - ログアウト後は `AuthProvider` が `user` を `null` に設定し、`ProtectedRoute` が自動的に `/login` へリダイレクト
+
 ### 次回以降の候補タスク
 
-- Renderへのデプロイ（フェーズ2完了）
+- Renderへのデプロイ
+- スマートフォン表示での追加修正（必要に応じて）
