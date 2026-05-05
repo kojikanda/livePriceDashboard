@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Box,
   Button,
@@ -8,6 +8,8 @@ import {
   Typography,
   ToggleButton,
   ToggleButtonGroup,
+  Alert,
+  Snackbar,
 } from "@mui/material";
 import { DataGrid, type GridColDef } from "@mui/x-data-grid";
 import { socket } from "../lib/socket";
@@ -15,6 +17,17 @@ import { useDashboard } from "../hooks/useDashboard";
 import { useUsdJpyRate } from "../hooks/useUsdJpyRate";
 import { useCurrentPrices } from "../hooks/useCurrentPrices";
 import type { CryptoSymbol, PortfolioRow } from "../types/price";
+
+/**
+ * ポジション追加・削除・全削除のいずれかの操作を表す型
+ * - add: ポジション追加。expectedCountは、追加後のportfolioの件数がこの値になればバックエンド側で処理が完了したと判断する。
+ * - remove: ポジション削除。idは、削除するポジションのID。このIDが消えればバックエンド側で処理が完了したと判断する。
+ * - clear: 全削除。portfolioの件数が0になればバックエンド側で処理が完了したと判断する。
+ */
+type PendingOp =
+  | { type: "add"; expectedCount: number }
+  | { type: "remove"; id: string }
+  | { type: "clear" };
 
 /**
  * 指定された値を日本円表示フォーマットの文字列(小数点以下なし, 3桁区切り)に変換する
@@ -57,6 +70,27 @@ export function PortfolioSimulator() {
 
   // 受信データからポートフォリオ行データを取得
   const rows: PortfolioRow[] = payload?.portfolio ?? [];
+  // 仮想購入・削除・全削除のいずれかの操作がバックエンドで完了するまでの間、処理中の操作を設定するstate
+  const [pendingOp, setPendingOp] = useState<PendingOp | null>(null);
+
+  // バックエンドのレスポンスを確認する処理
+  useEffect(() => {
+    if (!payload || !pendingOp) return;
+    const portfolio = payload.portfolio;
+
+    const confirmed =
+      pendingOp.type === "add"
+        ? // 追加処理完了の条件は、portfolioの件数がexpectedCount以上になること
+          portfolio.length >= pendingOp.expectedCount
+        : pendingOp.type === "remove"
+          ? // 削除処理完了の条件は、portfolioから該当IDの行が消えること
+            !portfolio.some((r) => r.id === pendingOp.id)
+          : // 全削除処理完了の条件は、portfolioが空になること
+            portfolio.length === 0;
+
+    // バックエンド側で処理完了が確認できたら、pendingOpをnullにしてSnackbarを閉じる
+    if (confirmed) setPendingOp(null);
+  }, [payload, pendingOp]);
 
   // 現在価格取得用カスタムフック
   const currentPrices = useCurrentPrices();
@@ -160,8 +194,13 @@ export function PortfolioSimulator() {
             variant="outlined"
             size="small"
             color="error"
-            // クリックしたときに該当ポジションのIDをバックエンドへ送信して削除する
-            onClick={() => socket.emit("removePosition", { id: params.row.id })}
+            onClick={() => {
+              // クリックしたときに処理中の操作をセットしてSnackbarを表示する
+              setPendingOp({ type: "remove", id: params.row.id });
+              // クリックしたときに該当ポジションのIDをバックエンドへ送信して削除する
+              socket.emit("removePosition", { id: params.row.id });
+            }}
+            disabled={pendingOp !== null}
           >
             決済
           </Button>
@@ -176,6 +215,9 @@ export function PortfolioSimulator() {
     if (price === null || usdJpyRate === null) return;
     const jpy = Number(investAmount);
     if (isNaN(jpy) || jpy <= 0) return;
+
+    // バックエンドへ購入イベントを送信する前に、処理中の操作をセットしてSnackbarを表示する
+    setPendingOp({ type: "add", expectedCount: rows.length + 1 });
 
     // バックエンドへ購入イベントを送信
     socket.emit("addPosition", {
@@ -198,6 +240,16 @@ export function PortfolioSimulator() {
     : null;
   // 選択された銘柄の現在価格
   const selectedPrice = currentPrices[selectedSymbol];
+
+  // Snackbar表示中かどうか
+  const snackbarOpen = pendingOp !== null;
+  // Snackbarに表示するメッセージ
+  const snackbarMessage =
+    pendingOp?.type === "add"
+      ? "購入リクエストを送信しました。反映をお待ちください..."
+      : pendingOp?.type === "remove"
+        ? "決済リクエストを送信しました。反映をお待ちください..."
+        : "全決済リクエストを送信しました。反映をお待ちください...";
 
   return (
     <Card sx={{ mt: 2 }}>
@@ -265,6 +317,7 @@ export function PortfolioSimulator() {
             variant="contained"
             onClick={handleBuy}
             disabled={
+              pendingOp !== null ||
               selectedPrice === null ||
               investAmount === "" ||
               usdJpyRate === null
@@ -318,14 +371,29 @@ export function PortfolioSimulator() {
               variant="outlined"
               color="error"
               size="small"
-              // クリックしたときに全決済イベントをバックエンドへ送信
-              onClick={() => socket.emit("clearPositions")}
+              onClick={() => {
+                // バックエンドへ全削除イベントを送信する前に、処理中の操作をセットしてSnackbarを表示する
+                setPendingOp({ type: "clear" });
+                // クリックしたときに全削除の操作をセットしてSnackbarを表示する
+                socket.emit("clearPositions");
+              }}
+              // disabled を追加
+              disabled={pendingOp !== null}
             >
               全決済（一括清算）
             </Button>
           </>
         )}
       </CardContent>
+
+      <Snackbar
+        open={snackbarOpen}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+      >
+        <Alert severity="info" variant="filled">
+          {snackbarMessage}
+        </Alert>
+      </Snackbar>
     </Card>
   );
 }

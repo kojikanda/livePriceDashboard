@@ -49,7 +49,7 @@ export function VolatilitySettings({ symbol }: Props) {
   const [windowError, setWindowError] = useState(false);
   // アラート閾値の入力エラー発生有無
   const [thresholdError, setThresholdError] = useState(false);
-  // トースト表示中かどうか
+  // Snackbar表示中かどうか
   const [showAlert, setShowAlert] = useState(false);
 
   // 一度だけ初期化するためのフラグ

@@ -246,7 +246,7 @@ Binance APIからは、価格だけでなく「取引量（Volume）」も取れ
 - **Step 1**（完了）：DB・認証の基盤整備
 - **Step 2**（完了）：バックエンドの計算処理移行・ユーザごとの個別送信
 - **Step 3**（完了）：設定値のDB保存・アラート判定移行
-- **Step 4**（未着手）：ポートフォリオのDB保存と計算移行
+- **Step 4**（完了）：ポートフォリオのDB保存と計算移行
 
 ---
 
@@ -426,6 +426,70 @@ Binance APIからは、価格だけでなく「取引量（Volume）」も取れ
 - `src/components/SymbolPanel.tsx`：`volatilityWindowSec`・`volatilityThreshold` state を削除。`usePriceStream` の呼び出しを `{ symbol }` のみに変更。`volatilityAlertEvent` をコンテキストから取得し `showVolatilityAlert`（カードの赤枠アニメーション用）を制御。Snackbar を `VolatilitySettings` に移動したため削除。`showVolatilityAlert` は 5 秒後に自動リセットする `useEffect`（`setTimeout` + クリーンアップ）で `false` に戻す。`AlertSettings`・`VolatilitySettings` への Props を `symbol` のみに変更
 - `src/main.tsx`：開発時のみ `console.error` をラップし、Emotion の `:first-child` 警告（SSR 非使用のため無害な偽陽性）を抑制。`import.meta.env.DEV` で判定し本番ビルドには影響しない
 
+#### フェーズ2 Step 4：ポートフォリオのDB保存と計算移行（完了）
+
+**設計上の重要な決定事項**
+
+- ポートフォリオデータ（損益計算済み）は `dashboardUpdate` ペイロードの `portfolio` フィールドに含める設計を採用
+  - 理由：損益計算には現在価格が必要で、5秒ごとの interval で価格更新と同時に計算・送信できるため
+- `calcPortfolioRows` は `state.rows`（P/L が null のスナップショット）を `map` で変換して新しい配列を生成（`state.rows` 自体は更新しない）
+- DB への `insertPosition` は `RETURNING id` で UUID を取得し、in-memory の Map にも同じ ID で保存（DB と Map の ID が常に一致することを保証）
+- `deletePosition` は `WHERE id = $1 AND user_id = $2` で自分のポジション以外を削除できないよう制限（セキュリティ対策）
+- 購入・決済時のUX：「確認待ち」方式を採用。操作後に全ボタンを disabled にしてスナックバーを表示し、次の `dashboardUpdate` でバックエンドの確認を検出したら解除
+
+**ソケットイベント**
+
+| 方向            | イベント名        | ペイロード                                                                  |
+| --------------- | ----------------- | --------------------------------------------------------------------------- |
+| Client → Server | `addPosition`     | `{ symbol, direction, investedJpy, entryPriceUsd, usdJpyRate, coinAmount }` |
+| Client → Server | `removePosition`  | `{ id: string }`                                                            |
+| Client → Server | `clearPositions`  | なし                                                                        |
+| Server → Client | `dashboardUpdate` | 既存。`portfolio: PortfolioRow[]` フィールドを追加                          |
+
+**Backend 新規ファイル**
+
+- `src/db/portfolio.ts`：ポートフォリオの DB アクセス関数
+  - `loadPositions(userId)`：全件取得（`created_at ASC` 順）。計算値（P/L等）は `null` で返す
+  - `insertPosition(userId, symbol, ...)`：1件挿入。`RETURNING id` で UUID を取得して返す
+  - `deletePosition(userId, positionId)`：`user_id` 条件付きで1件削除（他人のポジション削除を防止）
+  - `clearPositions(userId)`：全件削除
+- `src/calc/portfolio.ts`：ポートフォリオのロジックと per-socket 状態管理
+  - `portfolioStates: Map<socketId, { userId, rows }>` をモジュールスコープで保持
+  - `initPortfolioState(socketId, userId)`：DB から読み込んで Map を初期化（async）
+  - `addPosition(socketId, ...)`：DB 挿入 → 取得した UUID を Map にも追加（async）
+  - `removePosition(socketId, positionId)`：DB 削除 → Map からも削除（async）
+  - `clearPortfolio(socketId)`：DB 全削除 → Map をクリア（async）
+  - `removePortfolioState(socketId)`：disconnect 時に Map からエントリを削除
+  - `calcPortfolioRows(socketId, currentPrices)`：現在価格で損益を計算した `PortfolioRow[]` を返す（同期）
+
+**Backend 変更ファイル**
+
+- `src/types.ts`
+  - `PortfolioRow` 型（`id`・`symbol`・`direction`・`investedJpy`・`entryPriceUsd`・`usdJpyRate`・`coinAmount`・`currentValueJpy`・`profitLoss`・`profitLossRate`）を追加
+  - `DashboardPayload` を `Record<CryptoSymbol, DashboardSymbolData> & { portfolio: PortfolioRow[] }` に変更
+- `src/index.ts`
+  - portfolio 関数を import に追加
+  - `io.on("connection")` の `Promise.all` に `initPortfolioState` を追加
+  - `addPosition`・`removePosition`・`clearPositions` イベントハンドラを追加
+  - `disconnect` で `removePortfolioState` を呼び出す
+  - interval 内：`calcPortfolioRows(socketId, latestPrices)` を呼び出し、`portfolio` を `dashboardUpdate` ペイロードに追加
+
+**Frontend 変更ファイル**
+
+- `src/types/price.ts`：`PortfolioRow` 型を追加。`DashboardPayload` に `portfolio: PortfolioRow[]` を追加
+- `src/components/PortfolioSimulator.tsx`：大幅に簡素化
+  - `useReducer`・`localStorage` を完全に削除
+  - `useDashboard()` から `payload.portfolio` を取得して `rows` に使用（損益計算もなし）
+  - 購入・決済・全決済の各操作で `socket.emit` を送信
+  - `PendingOp` 型（`add | remove | clear`）と `pendingOp` state で「確認待ち」を管理
+    - `add`：`expectedCount`（購入後のポートフォリオ件数）を保持
+    - `remove`：削除対象の `id` を保持
+    - `clear`：フィールドなし
+  - `useEffect([payload, pendingOp])`：次の `dashboardUpdate` でバックエンドの確認を検出し `setPendingOp(null)`
+  - `pendingOp !== null` の間は全ボタンを `disabled` に設定
+  - `snackbarOpen`・`snackbarMessage` は `pendingOp` から派生させる（独立した state を持たない）
+  - サマリー計算（`totalInvested`・`totalProfitLoss`）は `rows` から導出
+
 ### 現在のファイル構成
 
 ```
@@ -439,11 +503,13 @@ livePriceDashboard/
 │   │   │   ├── sentiment.ts        （センチメント・騰落率計算）
 │   │   │   ├── volatility.ts       （ボラティリティスコア・変化率計算）
 │   │   │   ├── targetAlert.ts      （ターゲット価格アラート判定・per-socket 状態管理）
-│   │   │   └── volatilityAlert.ts  （ボラティリティアラート判定・per-socket 状態管理）
+│   │   │   ├── volatilityAlert.ts  （ボラティリティアラート判定・per-socket 状態管理）
+│   │   │   └── portfolio.ts        （ポートフォリオ損益計算・per-socket 状態管理）
 │   │   ├── db/
 │   │   │   ├── client.ts           （PostgreSQL 接続プール）
 │   │   │   ├── schema.sql          （テーブル定義）
-│   │   │   └── alertSettings.ts    （アラート設定の DB アクセス関数）
+│   │   │   ├── alertSettings.ts    （アラート設定の DB アクセス関数）
+│   │   │   └── portfolio.ts        （ポートフォリオの DB アクセス関数）
 │   │   ├── auth/
 │   │   │   ├── jwt.ts              （JWT 生成・検証）
 │   │   │   └── middleware.ts       （Socket.io 認証ミドルウェア）
@@ -499,5 +565,4 @@ livePriceDashboard/
 
 ### 次回以降の候補タスク
 
-- フェーズ2 Step 4：ポートフォリオのDB保存と計算移行
-- Renderへのデプロイ（フェーズ2完了後）
+- Renderへのデプロイ（フェーズ2完了）

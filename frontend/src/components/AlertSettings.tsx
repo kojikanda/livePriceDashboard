@@ -32,7 +32,7 @@ export function AlertSettings({ symbol }: Props) {
   const [alertMessage, setAlertMessage] = useState<string>("");
   // 自動更新のON/OFF
   const [autoReset, setAutoReset] = useState(false);
-  // トースト表示中かどうか
+  // Snackbar表示中かどうか
   const [open, setOpen] = useState(false);
   // 上限価格・下限価格入力中かどうかを保持する
   const [focusedField, setFocusedField] = useState<"high" | "low" | null>(null);
