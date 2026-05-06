@@ -136,7 +136,7 @@ export function VolatilitySettings({ symbol }: Props) {
                 ? `${VOL_WINDOW_SEC_MIN}〜${VOL_WINDOW_SEC_MAX} の範囲で入力してください`
                 : " "
             }
-            sx={{ minWidth: 200 }}
+            sx={{ minWidth: 180 }}
             slotProps={{
               htmlInput: { min: VOL_WINDOW_SEC_MIN, max: VOL_WINDOW_SEC_MAX },
             }}
@@ -154,7 +154,7 @@ export function VolatilitySettings({ symbol }: Props) {
                 ? `${VOL_THRESHOLD_MIN}〜${VOL_THRESHOLD_MAX} の範囲で入力してください`
                 : " "
             }
-            sx={{ minWidth: 180 }}
+            sx={{ minWidth: 160 }}
             slotProps={{
               htmlInput: {
                 min: VOL_THRESHOLD_MIN,
