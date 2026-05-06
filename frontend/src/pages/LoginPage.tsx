@@ -22,7 +22,7 @@ export function LoginPage() {
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [isNavigating, setIsNavigating] = useState(false);
-  const { login } = useAuth();
+  const { login, forceLogoutMessage } = useAuth();
   const navigate = useNavigate();
 
   // フォーム送信処理
@@ -59,6 +59,14 @@ export function LoginPage() {
           <Typography variant="h5" gutterBottom>
             ログイン
           </Typography>
+
+          {/* 強制切断時のメッセージ */}
+          {forceLogoutMessage && (
+            <Alert severity="warning" sx={{ mb: 2 }}>
+              {forceLogoutMessage}
+            </Alert>
+          )}
+          {/* ログインエラー時のメッセージ */}
           {error && (
             <Alert severity="error" sx={{ mb: 2 }}>
               {error}

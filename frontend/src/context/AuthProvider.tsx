@@ -1,4 +1,4 @@
-import { useState, useEffect, type ReactNode } from "react";
+import { useState, useEffect, useCallback, type ReactNode } from "react";
 import { socket } from "../lib/socket";
 import type { User } from "../types/auth";
 import { AuthContext } from "./AuthContext";
@@ -13,6 +13,9 @@ const API = import.meta.env.VITE_API_URL;
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [forceLogoutMessage, setForceLogoutMessage] = useState<string | null>(
+    null,
+  );
 
   // ページリロード時に認証状態を確認する
   useEffect(() => {
@@ -27,6 +30,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
+
+  // forceDisconnectイベントの処理（別端末からのログインによる強制切断）
+  useEffect(() => {
+    const handleForceDisconnect = ({ reason }: { reason: string }) => {
+      // バックエンドから送信されたメッセージをstateに保持
+      setForceLogoutMessage(reason);
+
+      // Cookieを削除して、リフレッシュ後の再接続を防ぐ
+      void fetch(`${API}/auth/logout`, {
+        method: "POST",
+        credentials: "include",
+      }).catch(() => {});
+
+      // 切断
+      socket.disconnect();
+      // ユーザをnullにすることで、ProtectedRouteが/loginにリダイレクトする
+      setUser(null);
+    };
+
+    socket.on("forceDisconnect", handleForceDisconnect);
+    return () => {
+      socket.off("forceDisconnect", handleForceDisconnect);
+    };
+  }, []);
+
+  // 強制ログアウトメッセージをクリアするメソッド
+  const clearForceLogoutMessage = useCallback(
+    () => setForceLogoutMessage(null),
+    [],
+  );
 
   /**
    * ログイン処理
@@ -44,6 +77,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const data = await res.json();
       throw new Error(data.error);
     }
+
+    // ログインに成功したとき、強制ログアウト時のメッセージをクリアする
+    setForceLogoutMessage(null);
+
     const data: User = await res.json();
     setUser(data);
     socket.connect();
@@ -83,7 +120,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        loading,
+        login,
+        register,
+        logout,
+        forceLogoutMessage,
+        clearForceLogoutMessage,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

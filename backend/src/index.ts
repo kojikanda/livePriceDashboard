@@ -239,10 +239,28 @@ setInterval(() => {
   }
 }, DATA_SEND_CYCLE);
 
+// ユーザIDごとのアクティブなソケットID
+const activeUserSockets = new Map<number, string>();
+
 // ユーザから接続されたときの処理
 io.on("connection", async (socket) => {
   console.log("クライアント接続:", socket.id);
   const userId = socket.data.userId as number;
+
+  // 同じユーザが既に接続中なら旧ソケットに通知して切断
+  const existingSocketId = activeUserSockets.get(userId);
+  if (existingSocketId) {
+    const existingSocket = io.sockets.sockets.get(existingSocketId);
+    if (existingSocket) {
+      existingSocket.emit("forceDisconnect", {
+        reason: "別の端末からログインされました",
+      });
+      existingSocket.disconnect(true);
+    }
+  }
+
+  // 新しいソケットを登録
+  activeUserSockets.set(userId, socket.id);
 
   // DBからターゲット価格アラートとボラティリティアラートの設定を読み込んで、状態を初期化する
   await Promise.all([
@@ -337,6 +355,12 @@ io.on("connection", async (socket) => {
     removeTargetAlertState(socket.id);
     removeVolatilityState(socket.id);
     removePortfolioState(socket.id);
+
+    // 現在アクティブなソケットが自分自身の場合のみ削除
+    if (activeUserSockets.get(userId) === socket.id) {
+      activeUserSockets.delete(userId);
+    }
+
     console.log("クライアント切断:", socket.id);
   });
 });

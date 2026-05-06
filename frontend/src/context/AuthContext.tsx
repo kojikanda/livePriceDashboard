@@ -10,6 +10,8 @@ type AuthContextType = {
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  forceLogoutMessage: string | null;
+  clearForceLogoutMessage: () => void;
 };
 
 /**
