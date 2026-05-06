@@ -564,7 +564,7 @@ livePriceDashboard/
     └── tasks.json
 ```
 
-#### フェーズ3：追加修正対応（進行中）
+#### フェーズ3：追加修正対応（完了）
 
 ##### フェーズ3 その1：簡易レスポンシブデザイン対応（完了）
 
@@ -603,7 +603,49 @@ livePriceDashboard/
   - `onClick={() => void logout()}` の `void` は、`logout` が `async` 関数であるため意図的に Promise を捨てることを TypeScript に伝えるための記述
   - ログアウト後は `AuthProvider` が `user` を `null` に設定し、`ProtectedRoute` が自動的に `/login` へリダイレクト
 
+##### フェーズ3 その3：本番環境のデプロイと問題修正（完了）
+
+**デプロイ構成**
+
+- フロントエンド：Vercel
+- バックエンド：Render（Node.js Web Service）
+- データベース：Neon（PostgreSQL）
+
+**デプロイ前のコード修正**
+
+- `backend/src/routes/auth.ts`：Cookie の `sameSite` を本番（`"none"`）/ 開発（`"lax"`）で切り替え（クロスオリジンCookie対応）
+- `backend/package.json`：`tsx` を `devDependencies` から `dependencies` に移動・`start` スクリプトを `tsx src/index.ts` に変更（Renderでのビルド不要化）
+- `frontend/vercel.json`（新規）：`rewrites` 設定でSPAルーティングの直接アクセス時404エラーを解消
+
+**本番環境で発生した問題と修正**
+
+1. **Frankfurter API の CORS エラー**
+   - 原因：Viteのプロキシは開発サーバー専用のため本番ビルドでは機能しない
+   - `backend/src/index.ts`：`GET /frankfurter/latest` プロキシエンドポイントを追加（サーバー間通信でCORSを回避）
+   - `frontend/src/hooks/useUsdJpyRate.ts`：開発はViteプロキシ（`/frankfurter`）、本番はバックエンド経由（`VITE_API_URL/frankfurter`）に切り替え（`import.meta.env.DEV` で判定）
+   - `frontend/vite.config.ts`：開発用の `/frankfurter` プロキシ設定を維持
+
+2. **同一ユーザーの複数端末同時ログイン禁止**
+   - `backend/src/index.ts`：`activeUserSockets`（`Map<userId, socketId>`）で接続を管理。新規接続時に既存ソケットへ `forceDisconnect` イベントを送信。サーバーからの `disconnect()` は呼ばずクライアント側で切断させる（auto-reconnect 抑制のため）
+   - `frontend/src/context/AuthContext.ts`：`forceLogoutMessage`・`clearForceLogoutMessage` を型定義に追加
+   - `frontend/src/context/AuthProvider.tsx`：`forceDisconnect` イベント受信時に `POST /auth/logout` でCookieを削除し `localStorage` のJWTも削除・`setUser(null)` でリダイレクト
+   - `frontend/src/pages/LoginPage.tsx`：`forceLogoutMessage` をコンテキストから取得して `Alert` 表示
+
+3. **iOS Safari でのSocket.io接続不可（cross-origin Cookie問題）**
+   - 原因：iOS SafariのITP（Intelligent Tracking Prevention）がクロスオリジンWebSocket接続でのCookie送信をブロック
+   - `backend/src/auth/middleware.ts`：`socket.handshake.auth.token`（Authトークン）とCookieの両方を確認（Cookie優先・Authトークンはフォールバック）
+   - `backend/src/routes/auth.ts`：`/auth/login`・`/auth/register`・`/auth/me` のレスポンスに `token` を追加
+   - `frontend/src/context/AuthProvider.tsx`：`socket.connect()` 前に `socket.auth = { token }` をセット
+
+4. **iOS Safari でのリフレッシュ後ログアウト問題**
+   - 原因：ITPがリフレッシュ後の `/auth/me` へのクロスオリジンCookie送信をブロック
+   - `frontend/src/context/AuthProvider.tsx`：JWTを `localStorage`（キー: `"jwt"`）に保存し、`/auth/me` 呼び出し時に `Authorization: Bearer` ヘッダーで送信。ログアウト・強制ログアウト時に `localStorage.removeItem("jwt")` を実行
+   - `backend/src/routes/auth.ts`：`/auth/me` で `Authorization` ヘッダーからのトークンも受け付けるよう変更（Cookie優先・Authorizationヘッダーはフォールバック）
+
+5. **スマホUIの改善**
+   - `frontend/src/pages/Dashboard.tsx`：ヘッダーをスマホで縦並びに（`flexDirection: { xs: "column", sm: "row" }`）・タイトルフォントサイズをスマホで縮小（`fontSize: { xs: "1.5rem", sm: "2.125rem" }`）
+   - `frontend/src/components/VolatilitySettings.tsx`：監視ウィンドウ・アラート閾値TextFieldをスマホで縦並びに（`flexDirection: { xs: "column", sm: "row" }`）
+
 ### 次回以降の候補タスク
 
-- Renderへのデプロイ
-- スマートフォン表示での追加修正（必要に応じて）
+全タスク完了
