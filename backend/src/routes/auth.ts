@@ -109,19 +109,29 @@ router.post("/logout", (_req: Request, res: Response) => {
  * 認証確認（ページリロード時にフロントエンドから呼ぶ）
  */
 router.get("/me", (req: Request, res: Response) => {
-  // クッキーからJWTトークンを取得
-  const token = req.cookies["jwt"];
+  // Cookieから取得
+  const tokenFromCookie = req.cookies["jwt"] as string | undefined;
+  // Authorizationヘッダから取得（iOS Safari ITP 対応）
+  const authHeader = req.headers.authorization;
+  const tokenFromHeader = authHeader?.startsWith("Bearer ")
+    ? authHeader.slice(7)
+    : undefined;
+
+  // CookieまたはAuthorizationヘッダからのトークンをチェック
+  const token = tokenFromCookie ?? tokenFromHeader;
   if (!token) {
     res.status(401).json({ error: "未認証" });
     return;
   }
 
-  // JWTトークンを検証してユーザ情報を返す
+  // トークンの認証チェック
   const payload = verifyToken(token);
   if (!payload) {
     res.status(401).json({ error: "トークンが無効です" });
     return;
   }
+
+  // ユーザ認証がOKのときはユーザ情報を返す
   res.json({ userId: payload.userId, email: payload.email, token });
 });
 
