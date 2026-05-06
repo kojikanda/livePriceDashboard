@@ -762,3 +762,73 @@ animationは設定に寄って、永遠にアニメーションすることが�
 
 クロスオリジン（別ドメイン・ポート）の通信であっても、クッキーや認証ヘッダーを強制的に送信する設定。<br>
 セッション認証やログイン状態を保持したAPI通信に必須で、サーバー側でCORSの許可が必要。
+
+# デプロイ
+
+## 1. Neon
+
+1. neon.tech でアカウントを作成
+2. 「New Project」でプロジェクトを作成（Region は Singaporeで）
+3. 「SQL Editor」を開き、backend/src/db/schema.sql の内容をすべて貼り付け
+4. 「Dashboard」→「Connection string」から Connection URL をコピー
+
+- 形式：postgresql://user:password@host/dbname?sslmode=require
+  →末尾に「&channel_binding=require」がくっついているが、これは省いても良いみたい。
+
+## 2. Render
+
+1. 「New」→「WebService」
+2. GitHub リポジトリを選択して連携
+3. 以下の通り設定
+
+| 項目           | 値          |
+| -------------- | ----------- |
+| Name           | 任意        |
+| Root Directory | backend     |
+| Environment    | Node        |
+| Build Command  | npm install |
+| Start Command  | npm start   |
+| Instance Type  | Free        |
+
+4. 「Environment Variables」に以下を追加
+
+| Key          | Value                                                  |
+| ------------ | ------------------------------------------------------ |
+| NODE_ENV     | production                                             |
+| DATABASE_URL | Neon の Connection URL                                 |
+| JWT_SECRET   | ランダムな文字列（64文字以上推奨）                     |
+| FRONTEND_URL | ← 後で Vercel の URL を設定します（ひとまず空欄で OK） |
+
+JWT_SECRETはターミナルで`openssl rand -base64 64`を実行すると生成できる。
+
+5. 「Create Web Service」でデプロイ開始
+6. ログに Server running on port ... と表示されれば成功
+7. 表示された URL（例：https://xxx.onrender.com）をメモ
+
+## 3. Vercel
+
+1. vercel.com でアカウントを作成（GitHub アカウントでログイン推奨）
+2. 「Add New」→「Project」→ GitHub リポジトリを選択して「import」
+3. 以下の通り設定
+
+| 項目             | 値                         |
+| ---------------- | -------------------------- |
+| Root Directory   | frontend ← 必須。忘れずに  |
+| Framework Preset | Vite（自動検出されるはず） |
+| Build Command    | npm run build              |
+| Output Directory | dist                       |
+
+4. 「Environment Variables」に以下を追加
+
+| Key          | Value                                         |
+| ------------ | --------------------------------------------- |
+| VITE_API_URL | Render の URL（例：https://xxx.onrender.com） |
+
+5. 「Deploy」でデプロイ開始
+6. 表示された URL（例：https://xxx.vercel.app）をメモ
+
+## 4. RenderにVercelのURLを設定
+
+1. Render ダッシュボードに戻る
+2. 「Environment」タブで FRONTEND_URL に Vercel の URL を設定
+3. 「Save Changes」→ 自動で再デプロイ
