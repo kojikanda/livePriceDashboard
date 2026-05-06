@@ -250,8 +250,10 @@ io.on("connection", async (socket) => {
   // 同じユーザが既に接続中なら旧ソケットに通知して切断
   const existingSocketId = activeUserSockets.get(userId);
   if (existingSocketId) {
+    console.log("同じユーザからの接続を検知:", existingSocketId);
     const existingSocket = io.sockets.sockets.get(existingSocketId);
     if (existingSocket) {
+      console.log("強制切断イベントを発行");
       existingSocket.emit("forceDisconnect", {
         reason: "別の端末からログインされました",
       });

@@ -34,6 +34,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // forceDisconnectイベントの処理（別端末からのログインによる強制切断）
   useEffect(() => {
     const handleForceDisconnect = ({ reason }: { reason: string }) => {
+      console.log("強制切断イベント検知");
       // バックエンドから送信されたメッセージをstateに保持
       setForceLogoutMessage(reason);
 
@@ -44,6 +45,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }).catch(() => {});
 
       // 切断
+      console.log("切断実行");
       socket.disconnect();
       // ユーザをnullにすることで、ProtectedRouteが/loginにリダイレクトする
       setUser(null);
