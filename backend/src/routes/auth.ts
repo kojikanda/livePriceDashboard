@@ -49,7 +49,7 @@ router.post("/register", async (req: Request, res: Response) => {
     const user = result.rows[0];
     const token = signToken({ userId: user.id, email: user.email });
     res.cookie("jwt", token, COOKIE_OPTIONS);
-    res.status(201).json({ userId: user.id, email: user.email });
+    res.status(201).json({ userId: user.id, email: user.email, token });
   } catch (err: any) {
     if (err.code === "23505") {
       // PostgreSQLのUNIQUE制約違反のエラーコード
@@ -90,7 +90,7 @@ router.post("/login", async (req: Request, res: Response) => {
     // ログイン成功 - JWTトークンを生成してクッキーにセットし、ユーザ情報を返す
     const token = signToken({ userId: user.id, email: user.email });
     res.cookie("jwt", token, COOKIE_OPTIONS);
-    res.json({ userId: user.id, email: user.email });
+    res.json({ userId: user.id, email: user.email, token });
   } catch {
     res.status(500).json({ error: "サーバーエラーが発生しました" });
   }
@@ -122,7 +122,7 @@ router.get("/me", (req: Request, res: Response) => {
     res.status(401).json({ error: "トークンが無効です" });
     return;
   }
-  res.json({ userId: payload.userId, email: payload.email });
+  res.json({ userId: payload.userId, email: payload.email, token });
 });
 
 export default router;

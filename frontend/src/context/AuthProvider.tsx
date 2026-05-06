@@ -20,12 +20,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // ページリロード時に認証状態を確認する
   useEffect(() => {
     fetch(`${API}/auth/me`, { credentials: "include" })
-      .then((res) => (res.ok ? (res.json() as Promise<User>) : null))
+      .then((res) =>
+        res.ok ? (res.json() as Promise<User & { token: string }>) : null,
+      )
       .then((data) => {
-        setUser(data);
-
-        // 認証済みならSocket接続
-        if (data) socket.connect();
+        if (data) {
+          // ユーザ認証OKのとき
+          // ユーザ情報を設定
+          setUser({ userId: data.userId, email: data.email });
+          // socket.authにトークンをセット
+          socket.auth = { token: data.token };
+          // WebSocketで接続
+          socket.connect();
+        }
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -83,8 +90,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // ログインに成功したとき、強制ログアウト時のメッセージをクリアする
     setForceLogoutMessage(null);
 
-    const data: User = await res.json();
-    setUser(data);
+    const data: User & { token: string } = await res.json();
+    // ユーザ情報を設定
+    setUser({ userId: data.userId, email: data.email });
+    // socket.authにトークンをセット
+    socket.auth = { token: data.token };
+    // WebSocketで接続
     socket.connect();
   };
 
@@ -104,8 +115,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const data = await res.json();
       throw new Error(data.error);
     }
-    const data: User = await res.json();
-    setUser(data);
+
+    const data: User & { token: string } = await res.json();
+    // ユーザ情報を設定
+    setUser({ userId: data.userId, email: data.email });
+    // socket.authにトークンをセット
+    socket.auth = { token: data.token };
+    // WebSocketで接続
     socket.connect();
   };
 
