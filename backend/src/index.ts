@@ -65,6 +65,16 @@ app.use(cookieParser());
 // 認証関連のルーティングを追加
 app.use("/auth", authRouter);
 
+// Frankfurter APIのプロキシ設定
+app.get("/frankfurter/latest", async (req, res) => {
+  const { from, to } = req.query;
+  const response = await fetch(
+    `https://api.frankfurter.app/latest?from=${String(from)}&to=${String(to)}`,
+  );
+  const data = await response.json();
+  res.json(data);
+});
+
 // Socket.io認証ミドルウェアを適用
 applySocketAuthMiddleware(io);
 
