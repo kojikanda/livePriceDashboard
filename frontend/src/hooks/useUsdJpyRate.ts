@@ -24,7 +24,10 @@ export function useUsdJpyRate(): UseUsdJpyRateReturn {
     const fetchRate = async () => {
       try {
         setLoading(true);
-        const res = await fetch("/frankfurter/latest?from=USD&to=JPY");
+        const baseUrl = import.meta.env.DEV
+          ? "/frankfurter"
+          : "https://api.frankfurter.app";
+        const res = await fetch(`${baseUrl}/latest?from=USD&to=JPY`);
         if (!res.ok) throw new Error("レート取得失敗");
         const data = await res.json();
         setRate(data.rates.JPY);

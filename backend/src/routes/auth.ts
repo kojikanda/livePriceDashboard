@@ -14,8 +14,12 @@ const router = Router();
  */
 const COOKIE_OPTIONS = {
   httpOnly: true,
+  // 本番環境では、VercelとRenderを使うので、sameSiteは"none"に設定し、異なるドメインでもCookieを設定できるようにする。
+  // その際、secureはtrueにし、必ずHTTPS通信となるようにする。
   secure: process.env.NODE_ENV === "production",
-  sameSite: "lax" as const,
+  sameSite: (process.env.NODE_ENV === "production" ? "none" : "lax") as
+    | "none"
+    | "lax",
   maxAge: 7 * 24 * 60 * 60 * 1000, // 7日間
 };
 
