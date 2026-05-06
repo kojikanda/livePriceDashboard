@@ -35,12 +35,19 @@ export function Dashboard() {
           <Box
             sx={{
               display: "flex",
-              alignItems: "center",
+              flexDirection: { xs: "column", sm: "row" }, // スマホ: 縦並び、sm以上: 横並び
+              alignItems: { xs: "flex-start", sm: "center" },
               justifyContent: "space-between",
+              gap: { xs: 1, sm: 0 },
               mb: 2,
             }}
           >
-            <Typography variant="h4">Live Price Dashboard</Typography>
+            <Typography
+              variant="h4"
+              sx={{ fontSize: { xs: "1.5rem", sm: "2.125rem" } }} // スマホは文字を小さく
+            >
+              Live Price Dashboard
+            </Typography>
             <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
               <Typography variant="body2" color="text.secondary">
                 {user?.email}

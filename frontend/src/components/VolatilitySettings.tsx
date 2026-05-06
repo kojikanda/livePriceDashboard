@@ -116,7 +116,13 @@ export function VolatilitySettings({ symbol }: Props) {
         <Typography variant="h6" gutterBottom>
           ボラティリティアラート設定
         </Typography>
-        <Box sx={{ display: "flex", gap: 2 }}>
+        <Box
+          sx={{
+            display: "flex",
+            flexDirection: { xs: "column", sm: "row" },
+            gap: 2,
+          }}
+        >
           <TextField
             label="監視ウィンドウ（秒）"
             type="number"
