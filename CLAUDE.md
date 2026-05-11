@@ -646,6 +646,14 @@ livePriceDashboard/
    - `frontend/src/pages/Dashboard.tsx`：ヘッダーをスマホで縦並びに（`flexDirection: { xs: "column", sm: "row" }`）・タイトルフォントサイズをスマホで縮小（`fontSize: { xs: "1.5rem", sm: "2.125rem" }`）
    - `frontend/src/components/VolatilitySettings.tsx`：監視ウィンドウ・アラート閾値TextFieldをスマホで縦並びに（`flexDirection: { xs: "column", sm: "row" }`）
 
+6. **グラフの時刻がUTCで表示される問題**
+   - 原因：バックエンド（Renderサーバー）のシステムタイムゾーンがUTCのため、`new Date(now).toLocaleTimeString()` がUTC時刻の文字列を生成していた。ローカル環境ではMacのタイムゾーン（JST）が使われるため問題が顕在化しなかった
+   - 設計方針：タイムゾーン変換は「表示」の責務であり、フロントエンド（ブラウザ）が担うべき。バックエンドはタイムゾーンに依存しない `timestamp`（Unix ミリ秒）のみを保持・送信する
+   - `backend/src/types.ts`：`PriceData` から `time: string` フィールドを削除
+   - `frontend/src/types/price.ts`：`PriceData` から `time: string` フィールドを削除
+   - `backend/src/index.ts`：`history.push()` から `time` フィールドを削除
+   - `frontend/src/components/PriceChart.tsx`：`LineChart` に渡す直前に `data.map()` で `timestamp` → `time` 文字列に変換（`new Date(d.timestamp).toLocaleTimeString()`）。引数なしで呼ぶことでブラウザのOSタイムゾーン設定を自動的に使用する
+
 ### 次回以降の候補タスク
 
 全タスク完了

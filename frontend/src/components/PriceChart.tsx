@@ -30,8 +30,13 @@ type Props = {
  * @returns 価格表示グラフコンポーネント
  */
 export function PriceChart({ data, durationMin, onDurationChange }: Props) {
+  // timestamp → ブラウザのタイムゾーンで時刻文字列に変換
+  const chartData = data.map((d) => ({
+    ...d,
+    time: new Date(d.timestamp).toLocaleTimeString(),
+  }));
   // 価格のリスト
-  const prices = data.map((d) => d.price);
+  const prices = chartData.map((d) => d.price);
   // 価格の最小値
   const min = prices.length > 0 ? Math.min(...prices) : 0;
   // 価格の最大値
@@ -65,7 +70,7 @@ export function PriceChart({ data, durationMin, onDurationChange }: Props) {
       </Box>
       {/* グラフ */}
       <ResponsiveContainer width="100%" height={300}>
-        <LineChart data={data}>
+        <LineChart data={chartData}>
           <XAxis
             dataKey="time"
             tick={{ fontSize: 11, fill: "rgba(255,255,255,0.87)" }}

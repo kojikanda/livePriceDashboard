@@ -2,8 +2,6 @@
  * 価格情報
  */
 export type PriceData = {
-  // 価格データの時間文字列
-  time: string;
   // 価格
   price: number;
   // 価格データのタイムスタンプ(ミリ秒)

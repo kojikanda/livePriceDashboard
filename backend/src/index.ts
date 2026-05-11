@@ -177,7 +177,6 @@ setInterval(() => {
     history.push({
       price,
       timestamp: now,
-      time: new Date(now).toLocaleTimeString(),
     });
     if (history.length > HISTORY_MAX) history.shift();
   }
